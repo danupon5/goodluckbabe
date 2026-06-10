@@ -76,7 +76,7 @@
 
   /* ---- action ---- */
   .actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:16px}
-  button{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;padding:11px 16px;cursor:pointer;transition:transform .05s,background .15s}
+  button{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:99px;padding:11px 16px;cursor:pointer;transition:transform .05s,background .15s}
   button:hover{background:var(--paper)}
   button:active{transform:translateY(1px)}
   button:disabled{opacity:.45;cursor:not-allowed}
@@ -104,6 +104,10 @@
   tr.section td{background:var(--indigo-tint);font-family:'Space Grotesk',sans-serif;font-weight:600;color:var(--indigo);letter-spacing:.01em}
   td .rmk{display:block;margin-top:3px;font-size:11.5px;color:var(--ink-soft);border-left:2px solid var(--hi-deep);padding-left:7px}
   tbody tr:not(.section):hover td{background:#fffdf0}
+
+  /* สำหรับฟีเจอร์ Drag and Drop */
+  tbody tr { cursor: grab; user-select: none; }
+  tbody tr:active { cursor: grabbing; }
 
   .foot{margin-top:26px;font-size:12px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:16px;line-height:1.6}
   .foot strong{color:var(--ink)}
@@ -147,7 +151,7 @@
   <header>
     <div>
       <h1>BOQ <span class="mark">Extractor</span></h1>
-      <p class="sub">โยน PDF / Excel / รูป วางลงไป หรือแปะตารางข้อความ / <b>Paste รูปภาพ</b> แล้วให้ Gemini แกะออกมาเป็นตาราง BOQ — เอามาทั้งหมด รวม sub-item, section header และแยก HW / ค่าแรง <b>(รองรับการ Export พร้อมผูกสูตร Excel)</b></p>
+      <p class="sub">โยน PDF / Excel / รูป วางลงไป หรือแปะตารางข้อความ / <b>Paste รูปภาพ</b> แล้วให้ Gemini แกะออกมาเป็นตาราง BOQ — เอามาทั้งหมด รวม sub-item, section header และแยก HW / ค่าแรง <b>(รองรับการ Export พร้อมผูกสูตร Excel และปรับเลื่อนลำดับได้)</b></p>
     </div>
     <span class="badge" id="modelBadge">model · flash-lite</span>
   </header>
@@ -238,6 +242,13 @@
             <option value="no">No</option>
           </select>
         </div>
+        <div class="field" style="flex:none; width:140px; min-width:auto;">
+          <label style="margin-bottom:4px">4. Fill Selling Price (O & P)</label>
+          <select id="cfgFillOP" style="padding:6px 10px;">
+            <option value="no" selected>No</option>
+            <option value="yes">Yes</option>
+          </select>
+        </div>
         <div class="hint" style="margin:0; margin-left:auto; text-align:right;">
           <span style="display:block; font-weight:600; color:var(--ink)">Selling Price Formula</span>
           <code>Calculated Included Uptime and logistic Fee</code>
@@ -263,7 +274,7 @@
         </tr></thead><tbody id="tbodyQ"></tbody></table>
       </div>
       <div class="price-remarks hidden" id="priceRemarksQ"></div>
-      <div class="qnote"><b>Total Cost</b> = วัสดุ+ค่าแรงรวม · <b>Unit Cost</b> = Total÷Qty · ราคา Selling คำนวณแบบ Real-time ตาม GP และ Uptime ด้านบน</div>
+      <div class="qnote"><b>Total Cost</b> = วัสดุ+ค่าแรงรวม · <b>Unit Cost</b> = Total÷Qty · ราคา Selling คำนวณแบบ Real-time ตาม GP และ Uptime ด้านบน · 💡 <b>สามารถลากสลับแถวเพื่อจัดเรียงลำดับใหม่ได้</b></div>
 
       <div class="tmpl-box">
         <h3>Export เข้า Template PL <span class="badge">xlsx</span></h3>
@@ -434,6 +445,31 @@ Return ONLY the structured JSON object.`;
       }, required:["description"] } }
   }, required:["items"] };
 
+  function autoRenumber(rows) {
+    const hasSections = rows.some(r => r.is_section);
+    let sectionIdx = 0;
+    let itemIdx = 0;
+    
+    rows.forEach(r => {
+      if (r.is_section) {
+        sectionIdx++;
+        itemIdx = 0;
+        r.item_no = String(sectionIdx);
+      } else {
+        itemIdx++;
+        if (hasSections) {
+          if (sectionIdx === 0) {
+            r.item_no = `0.${itemIdx}`;
+          } else {
+            r.item_no = `${sectionIdx}.${itemIdx}`;
+          }
+        } else {
+          r.item_no = String(itemIdx);
+        }
+      }
+    });
+  }
+
   $('run').addEventListener('click', async () => {
     const key = $('apiKey').value.trim();
     let textVal = $('textInput').value.trim();
@@ -464,7 +500,7 @@ Return ONLY the structured JSON object.`;
         } else if(/\.(xlsx|xls)$/.test(name)){
           setStatus('กำลังอ่าน Excel...');
           parts.push({ text: 'DOCUMENT CONTENT (CSV per sheet):\n' + await excelToText(fileObj) });
-        } else { // csv / txt
+        } else { 
           parts.push({ text: 'DOCUMENT CONTENT:\n' + await readAsText(fileObj) });
         }
       }
@@ -498,6 +534,7 @@ Return ONLY the structured JSON object.`;
       const projTitle = (parsed.project_title||'').trim();
       if(projTitle && !$('tmplProject').value.trim()) $('tmplProject').value = projTitle;
 
+      autoRenumber(rows);
       render(rows);
       setStatus('เสร็จแล้ว ✓');
     } catch(err){
@@ -540,10 +577,17 @@ Return ONLY the structured JSON object.`;
     const tb = $('tbody'); tb.innerHTML='';
     let itemCount=0, matSum=0, labSum=0, hasRemark=false;
 
-    rows.forEach(r => {
+    rows.forEach((r, idx) => {
       const tr = document.createElement('tr');
+      tr.setAttribute('draggable', 'true');
+      tr.setAttribute('data-index', idx);
+      
+      // ✨ แก้ไขบั๊กหน้าเว็บตารางดิบ: แถวหัวข้อ Section จะแยกแสดงเลขลำดับในช่องแรก ไม่โดนยุบกลืนรวมก้อนแล้ว
       if(r.is_section){
-        tr.className='section'; tr.innerHTML = `<td colspan="11">▶ ${esc(r.description||'')}</td>`; tb.appendChild(tr); return;
+        tr.className='section'; 
+        tr.innerHTML = `<td class="mono">${esc(r.item_no||'')}</td><td class="mono"></td><td colspan="9">▶ ${esc(r.description||'')}</td>`; 
+        tb.appendChild(tr); 
+        return;
       }
       itemCount++;
       const label = r.item_no || String(itemCount);
@@ -584,10 +628,10 @@ Return ONLY the structured JSON object.`;
   function quoteUnit(r, combined){ const qty = parseNum(r.qty); return (!isNaN(qty) && qty!==0) ? combined/qty : ''; }
   function quoteDesc(r){ let desc = r.description||''; const rmk = (r.remark||'').trim(); if(rmk && !isPriceRemark(rmk)) desc += ` (หมายเหตุ: ${rmk})`; return desc; }
 
-  // ผูก Event Listener ให้คำนวณใหม่เมื่อมีการเปลี่ยนค่าต่างๆ
   $('cfgGP').addEventListener('input', renderQuote);
   $('cfgUptime').addEventListener('input', renderQuote);
   $('cfgRoundup').addEventListener('change', renderQuote);
+  $('cfgFillOP').addEventListener('change', renderQuote);
 
   function quoteRows(){
     const rows=[];
@@ -595,15 +639,14 @@ Return ONLY the structured JSON object.`;
     const uptime = parseFloat($('cfgUptime').value) || 0;
     const doRoundup = $('cfgRoundup').value === 'yes';
 
-    lastRows.forEach(r=>{
-      if(r.is_section){ rows.push({section:true, desc:'▶ '+(r.description||'')}); return; }
+    lastRows.forEach((r, idx)=>{
+      if(r.is_section){ rows.push({section:true, item_no: r.item_no||'', desc:'▶ '+(r.description||''), origIdx: idx}); return; }
       
       const combined = quoteCombined(r); 
       const unitPriceVal = quoteUnit(r,combined);
       
       let sellUnit = '', sellTot = '';
       if (unitPriceVal !== '') {
-          // คำนวณสูตร: Unit cost /(1-GP%)*1.02*(1+Uptime%)
           let rawSellUnit = (unitPriceVal / (1 - (gp/100))) * 1.02 * (1 + (uptime/100));
           sellUnit = doRoundup ? Math.ceil(rawSellUnit) : rawSellUnit;
           
@@ -614,7 +657,8 @@ Return ONLY the structured JSON object.`;
       rows.push({ 
         item:r.item_no||'', pn:r.pn||'', desc:quoteDesc(r), qty:r.qty||'', unitType:r.unit||'', 
         unitPrice: unitPriceVal!==''?unitPriceVal:'', total: combined||'',
-        sellUnit: sellUnit, sellTotal: sellTot, qNum: parseNum(r.qty)
+        sellUnit: sellUnit, sellTotal: sellTot, qNum: parseNum(r.qty),
+        origIdx: idx
       });
     });
     return rows;
@@ -626,7 +670,16 @@ Return ONLY the structured JSON object.`;
     
     quoteRows().forEach(r=>{
       const tr=document.createElement('tr');
-      if(r.section){ tr.className='section'; tr.innerHTML = `<td colspan="9">${esc(r.desc)}</td>`; tb.appendChild(tr); return; }
+      tr.setAttribute('draggable', 'true');
+      tr.setAttribute('data-index', r.origIdx);
+      
+      // ✨ แก้ไขบั๊กหน้าเว็บตารางเคาะราคา: สำหรับแถวหัวข้อ Section จะแยกแสดงเลขลำดับออกมาที่ช่องแรกสุดด้วยเช่นกัน
+      if(r.section){ 
+        tr.className='section'; 
+        tr.innerHTML = `<td class="mono">${esc(r.item_no)}</td><td class="mono"></td><td colspan="7">${esc(r.desc)}</td>`; 
+        tb.appendChild(tr); 
+        return; 
+      }
       itemCount++;
       
       if(r.total) grand += parseNum(r.total);
@@ -646,6 +699,105 @@ Return ONLY the structured JSON object.`;
     fillPriceRemarks('priceRemarksQ');
   }
 
+  let draggedIndex = null;
+
+  function moveBlock(fromIndex, toIndex) {
+    const isSection = lastRows[fromIndex].is_section;
+    let blockCount = 1;
+    
+    if (isSection) {
+      for (let i = fromIndex + 1; i < lastRows.length; i++) {
+        if (lastRows[i].is_section) break;
+        blockCount++;
+      }
+    }
+    
+    const block = lastRows.splice(fromIndex, blockCount);
+    let targetIndex = toIndex;
+    
+    if (fromIndex < targetIndex) {
+      targetIndex -= blockCount;
+    }
+    
+    if (targetIndex < 0) targetIndex = 0;
+    if (targetIndex > lastRows.length) targetIndex = lastRows.length;
+    
+    lastRows.splice(targetIndex, 0, ...block);
+    
+    autoRenumber(lastRows);
+    render(lastRows);
+  }
+
+  function setupDragAndDrop(tbodyId) {
+    const tbody = $(tbodyId);
+    
+    tbody.addEventListener('dragstart', e => {
+      const tr = e.target.closest('tr');
+      if (!tr) return;
+      draggedIndex = parseInt(tr.getAttribute('data-index'));
+      tr.style.opacity = '0.4';
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    tbody.addEventListener('dragend', e => {
+      const tr = e.target.closest('tr');
+      if (tr) tr.style.opacity = '1';
+      Array.from(tbody.querySelectorAll('tr')).forEach(r => {
+        r.style.borderTop = '';
+        r.style.borderBottom = '';
+      });
+    });
+
+    tbody.addEventListener('dragover', e => {
+      e.preventDefault();
+      const tr = e.target.closest('tr');
+      if (!tr || draggedIndex === null) return;
+      
+      e.dataTransfer.dropEffect = 'move';
+      const rect = tr.getBoundingClientRect();
+      const relativeY = e.clientY - rect.top;
+      
+      if (relativeY < rect.height / 2) {
+        tr.style.borderTop = '2px solid var(--indigo)';
+        tr.style.borderBottom = '';
+      } else {
+        tr.style.borderBottom = '2px solid var(--indigo)';
+        tr.style.borderTop = '';
+      }
+    });
+
+    tbody.addEventListener('dragleave', e => {
+      const tr = e.target.closest('tr');
+      if (tr) {
+        tr.style.borderTop = '';
+        tr.style.borderBottom = '';
+      }
+    });
+
+    tbody.addEventListener('drop', e => {
+      e.preventDefault();
+      const tr = e.target.closest('tr');
+      if (!tr || draggedIndex === null) return;
+      
+      const targetIndex = parseInt(tr.getAttribute('data-index'));
+      if (draggedIndex === targetIndex) return;
+      
+      const rect = tr.getBoundingClientRect();
+      const relativeY = e.clientY - rect.top;
+      
+      let finalTarget = targetIndex;
+      if (relativeY >= rect.height / 2) {
+        finalTarget = targetIndex + 1;
+      }
+      
+      moveBlock(draggedIndex, finalTarget);
+      draggedIndex = null;
+    });
+  }
+
+  setupDragAndDrop('tbody');
+  setupDragAndDrop('tbodyQ');
+
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
     t.classList.add('active'); const v = t.dataset.view;
@@ -657,12 +809,17 @@ Return ONLY the structured JSON object.`;
 
   const numOrBlank = v => { const n=parseNum(v); return isNaN(n)?'':n; };
   
+  // ✨ แก้ไขบั๊ก Excel Export (ตารางดิบ): จ่ายเลขลำดับ item_no ออกไปตรงๆ ไม่ล็อคช่องว่างให้แถวหัวข้อหลักแล้ว
   function toAOA(){
     const head = splitMode ? ['Item No','PN','Description','QTY','HW Unit','HW Total','Labour Unit','Labour Total','Total','Remark'] : ['Item No','PN','Description','QTY','Unit Price','Total','Remark'];
     const W = head.length; const pad = a => { while(a.length<W) a.push(''); return a; }; const aoa = [head];
-    let rowIndex = 2; // For formula tracking
+    let rowIndex = 2; 
     lastRows.forEach(r=>{
-      if(r.is_section){ aoa.push(pad(['','','▶ '+(r.description||'')])); rowIndex++; return; }
+      if(r.is_section){ 
+        aoa.push(pad([r.item_no||'', '', '▶ '+(r.description||'')])); 
+        rowIndex++; 
+        return; 
+      }
       const rmk=(r.remark||'').trim(); const cell = (rmk && !isPriceRemark(rmk)) ? rmk : '';
       const mat=parseNum(r.total), lab=parseNum(r.labour_total); const combined=(isNaN(mat)?0:mat)+(isNaN(lab)?0:lab);
       
@@ -702,6 +859,7 @@ Return ONLY the structured JSON object.`;
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='BOQ_extract.csv'; a.click();
   });
   
+  // ✨ แก้ไขบั๊ก Excel Export (ตารางเคาะราคา ExcelJS): ให้แสดงเลขรันของ Section ลงในช่องแรกช่อง A เช่นกัน
   async function buildQuoteWorkbook(){
     const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('BOQ');
     ws.columns=[{width:10},{width:20},{width:60},{width:8},{width:10},{width:15},{width:15},{width:18},{width:18}];
@@ -712,8 +870,8 @@ Return ONLY the structured JSON object.`;
     let dataRow=2;
     quoteRows().forEach(r=>{
       if(r.section){
-        const row=ws.addRow(['','',r.desc,'','','','','','']);
-        row.eachCell({includeEmpty:true},(c,col)=>{ if(col>9) return; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFD9E1F2'}}; c.border=thin; if(col===3) c.font={bold:true,name:'Calibri',size:10}; });
+        const row=ws.addRow([r.item_no, '', r.desc, '', '', '', '', '', '']);
+        row.eachCell({includeEmpty:true},(c,col)=>{ if(col>9) return; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFD9E1F2'}}; c.border=thin; if(col===3 || col===1) c.font={bold:true,name:'Calibri',size:10}; });
         dataRow++; return;
       }
       
@@ -755,13 +913,12 @@ Return ONLY the structured JSON object.`;
     const head=['Item No','PN','Description','Qty','Unit','Unit Cost','Total Cost','Selling Unit','Selling Total']; 
     const lines=[head.join('\t')];
     quoteRows().forEach(r=>{
-      if(r.section) lines.push(['','',r.desc,'','','','','',''].join('\t'));
+      if(r.section) lines.push([r.item_no,'',r.desc,'','','','','',''].join('\t'));
       else lines.push([r.item,r.pn,r.desc,r.qty,r.unitType,r.unitPrice,r.total,r.sellUnit,r.sellTotal].join('\t'));
     });
     navigator.clipboard.writeText(lines.join('\n')).then(()=>{ const b=$('copyBtnQ'); b.textContent='คัดลอกแล้ว ✓'; setTimeout(()=>b.textContent='คัดลอกตาราง',1500); });
   });
 
-  // 🤖 ฟังก์ชัน Auto-Fill Contact ดึงข้อมูลลูกค้า
   $('btnExtractContact').addEventListener('click', async () => {
     const rawText = $('autoContactInput').value.trim();
     const key = $('apiKey').value.trim();
@@ -833,7 +990,7 @@ Return ONLY the structured JSON object.`;
 
       st.textContent = '✓ เติมข้อมูลลงช่องเรียบร้อยครับ';
       st.style.color = 'var(--green)';
-      $('autoContactInput').value = ''; // เคลียร์ช่อง input
+      $('autoContactInput').value = ''; 
       
     } catch(e) {
       st.textContent = 'ผิดพลาด: ' + e.message;
@@ -865,19 +1022,17 @@ Return ONLY the structured JSON object.`;
     reader.readAsArrayBuffer(f);
   });
   
-  // เปลี่ยนมาใช้ XlsxPopulate แทน ExcelJS ตรงนี้เพื่อรักษาฟอร์แมตในชีตอื่นๆ
+  // ✨ อัปเดตการกรอกเข้า NTT Template PL: ดึงเลข itemNo ล้อตามลำดับ Hierarchy (เช่น 1, 1.1) มากรอกลงในช่องคอลลัมน์ B ด้วย
   async function fillNTTTemplate(){
     if(!lastRows.length) throw new Error('แกะ BOQ ก่อน แล้วค่อย export');
     if(!templateBuf) throw new Error('อัปโหลด template .xlsx ก่อน');
     
-    // โหลดไฟล์ด้วย XlsxPopulate
     const wb = await XlsxPopulate.fromDataAsync(templateBuf);
     const sheetName = $('tmplSheet').value || 'Quotation-NTT-AI';
     const ws = wb.sheet(sheetName);
     
     if(!ws) throw new Error(`ไม่พบชีต "${sheetName}"`);
     
-    // เติมข้อมูล Header
     ws.cell('K6').value(new Date());
     
     const projectName = $('tmplProject').value.trim() || '';
@@ -892,23 +1047,24 @@ Return ONLY the structured JSON object.`;
     const gpPct = parseFloat($('cfgGP').value) || 0;
     const uptimePct = parseFloat($('cfgUptime').value) || 0;
     const doRoundup = $('cfgRoundup').value === 'yes';
+    const doFillOP = $('cfgFillOP').value === 'yes'; 
     
-    let row = 28, itemNo = 0;
+    let row = 28;
     for(const r of quoteRows()){
       if(row > 300) break;
       
       if(r.section){ 
+          ws.cell(`B${row}`).value(r.item_no); // ใส่เลขชุด Section (เช่น 1, 2)
           ws.cell(`F${row}`).value(r.desc); 
           row++; 
           continue; 
       }
       
-      itemNo++;
       const up = r.unitPrice !== '' && r.unitPrice != null ? r.unitPrice : null;
       const tot = r.total !== '' && r.total != null ? r.total : null;
       const qNum = r.qNum;
       
-      ws.cell(`B${row}`).value(itemNo);
+      ws.cell(`B${row}`).value(r.item); // ใส่เลขชุดไอเทมย่อยแบบสอดคล้องตารางหน้าเว็บ (เช่น 1.1, 1.2)
       ws.cell(`C${row}`).value(r.pn || '');
       ws.cell(`F${row}`).value(r.desc || '');
       ws.cell(`L${row}`).value(isNaN(qNum) ? r.qty : qNum); 
@@ -925,6 +1081,11 @@ Return ONLY the structured JSON object.`;
           ws.cell(`U${row}`).formula(finalFormula);
           ws.cell(`V${row}`).formula(`L${row}*U${row}`);
           
+          if(doFillOP) {
+              ws.cell(`O${row}`).formula(`U${row}`); 
+              ws.cell(`P${row}`).formula(`O${row}*L${row}`); 
+          }
+          
       } else if(tot != null) {
           ws.cell(`S${row}`).value(tot);
       }
@@ -939,8 +1100,6 @@ Return ONLY the structured JSON object.`;
     b.disabled=true; b.innerHTML='<span class="spinner"></span>กำลังสร้าง...'; st.textContent='';
     try{
       const wb = await fillNTTTemplate();
-      
-      // ดึงข้อมูลไฟล์ออกมาเป็น Blob
       const blob = await wb.outputAsync();
       
       const a = document.createElement('a'); 
