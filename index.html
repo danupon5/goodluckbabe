@@ -611,7 +611,7 @@ Return ONLY the structured JSON object.`;
       
       if(r.is_section){
         tr.className='section'; 
-        tr.innerHTML = `<td class="mono">${esc(r.item_no||'')}</td><td class="mono"></td><td colspan="9">▶ ${esc(r.description||'')}</td>`; 
+        tr.innerHTML = `<td class="mono">${esc(r.item_no||'')}</td><td class="mono"></td><td colspan="9">${esc(r.description||'')}</td>`; 
         tb.appendChild(tr); 
         return;
       }
@@ -673,7 +673,7 @@ Return ONLY the structured JSON object.`;
     const doRoundup = $('cfgRoundup').value === 'yes';
 
     lastRows.forEach((r, idx)=>{
-      if(r.is_section){ rows.push({section:true, item_no: r.item_no||'', desc:'▶ '+(r.description||''), origIdx: idx}); return; }
+      if(r.is_section){ rows.push({section:true, item_no: r.item_no||'', desc:(r.description||''), origIdx: idx}); return; }
       
       const combined = quoteCombined(r); 
       const unitPriceVal = quoteUnit(r,combined);
@@ -710,7 +710,7 @@ Return ONLY the structured JSON object.`;
         rows.push({
             section: true,
             item_no: nextSectionNo,
-            desc: "▶ NTT Support Service",
+            desc: "NTT Support Service",
             origIdx: -98,
             isSupportSectionHeader: true
         });
@@ -911,7 +911,7 @@ Return ONLY the structured JSON object.`;
     let rowIndex = 2; 
     lastRows.forEach(r=>{
       if(r.is_section){ 
-        aoa.push(pad([r.item_no||'', '', '▶ '+(r.description||'')])); 
+        aoa.push(pad([r.item_no||'', '', (r.description||'')])); 
         rowIndex++; 
         return; 
       }
@@ -1158,9 +1158,9 @@ Return ONLY the structured JSON object.`;
     let boqRow = 2; 
     
     for(const r of quoteRows()){
-      if(row > 450) break; // ขยายเผื่อให้รองรับ BOQ แบบยาวมากๆ ได้ถึง 400 กว่าบรรทัด
+      if(row > 450) break; 
       
-      // 🌟 [แก้บั๊กตัวหนาอย่างสมบูรณ์]: วนลูปทำตัวหนาทีละช่อง 
+      // 🌟 วนลูปทำตัวหนาทีละช่อง 
       if(r.section){ 
           ws.cell(`B${row}`).value(r.item_no);
           ws.cell(`F${row}`).value(r.desc); 
