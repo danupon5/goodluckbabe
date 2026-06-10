@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BOQ Extractor · Gemini</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F7F6F2;
+    --ink:#1C1E26;
+    --ink-soft:#565b6b;
+    --line:#dcdacf;
+    --indigo:#3D4A66;
+    --indigo-tint:#eceef4;
+    --hi:#E8FF3A;
+    --hi-deep:#c9df1e;
+    --green:#1F7A5C;
+    --danger:#b23b3b;
+    --shadow:0 1px 0 var(--line), 0 8px 30px -18px rgba(28,30,38,.4);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    font-size:15px;
+    line-height:1.5;
+    padding:28px 18px 80px;
+  }
+  .wrap{max-width:1080px;margin:0 auto}
+
+  /* ---- header ---- */
+  header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:6px}
+  h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:30px;letter-spacing:-.02em;margin:0;line-height:1}
+  h1 .mark{background:var(--hi);padding:0 .18em;border-radius:3px}
+  .sub{color:var(--ink-soft);font-size:13.5px;margin-top:8px;max-width:560px}
+  .badge{font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--indigo);border:1px solid var(--line);border-radius:999px;padding:5px 11px;white-space:nowrap}
+
+  /* ---- panels ---- */
+  .panel{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:18px;margin-top:22px}
+  .row{display:flex;flex-wrap:wrap;gap:14px}
+  .field{flex:1;min-width:220px}
+  label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-soft);margin-bottom:6px}
+  input[type=password],input[type=text],input[type=number],select,textarea{
+    width:100%;font-family:'IBM Plex Mono',monospace;font-size:13.5px;
+    border:1px solid var(--line);border-radius:9px;padding:11px 12px;background:var(--paper);color:var(--ink);
+  }
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--indigo);box-shadow:0 0 0 3px var(--indigo-tint)}
+  textarea{
+    font-family:'Inter',system-ui,sans-serif;
+    resize:vertical;min-height:90px;margin-top:14px;
+    line-height:1.6;
+  }
+  .hint{font-size:11.5px;color:var(--ink-soft);margin-top:6px}
+  .hint a{color:var(--indigo)}
+
+  /* ---- dropzone ---- */
+  .drop{
+    margin-top:14px;border:2px dashed var(--line);border-radius:12px;
+    background-image:linear-gradient(var(--indigo-tint) 1px,transparent 1px),linear-gradient(90deg,var(--indigo-tint) 1px,transparent 1px);
+    background-size:22px 22px;background-position:-1px -1px;
+    padding:34px 20px;text-align:center;cursor:pointer;transition:border-color .15s,background-color .15s;
+  }
+  .drop:hover,.drop.over{border-color:var(--indigo);background-color:#fbfbf8}
+  .drop.has{border-style:solid;border-color:var(--green)}
+  .drop .big{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16px}
+  .drop .small{font-size:12.5px;color:var(--ink-soft);margin-top:5px;font-family:'IBM Plex Mono',monospace}
+  .or-divider { text-align: center; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft); margin: 14px 0 0; }
+
+  /* ---- action ---- */
+  .actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:16px}
+  button{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;padding:11px 16px;cursor:pointer;transition:transform .05s,background .15s}
+  button:hover{background:var(--paper)}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.primary{background:var(--hi);border-color:var(--hi-deep);color:#1c1e10}
+  button.primary:hover{background:var(--hi-deep)}
+  .spinner{width:15px;height:15px;border:2px solid #1c1e1055;border-top-color:#1c1e10;border-radius:50%;display:inline-block;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:7px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .status{font-size:13px;font-family:'IBM Plex Mono',monospace;color:var(--ink-soft)}
+  .status.err{color:var(--danger)}
+
+  /* ---- results ---- */
+  .summary{display:flex;flex-wrap:wrap;gap:18px;align-items:baseline;margin-bottom:14px}
+  .summary .count{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--ink-soft)}
+  .summary .grand{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px}
+  .summary .grand small{font-weight:500;font-size:12px;color:var(--ink-soft);letter-spacing:.05em;text-transform:uppercase}
+  .tbtools{margin-left:auto;display:flex;gap:8px}
+
+  .tablewrap{overflow:auto;border:1px solid var(--line);border-radius:10px}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th{background:var(--ink);color:#fff;font-family:'IBM Plex Mono',monospace;font-weight:500;font-size:11px;letter-spacing:.05em;text-transform:uppercase;text-align:left;padding:10px 12px;position:sticky;top:0;z-index:2}
+  th.num,td.num{text-align:right}
+  td{padding:9px 12px;border-top:1px solid var(--line);vertical-align:top}
+  td.mono{font-family:'IBM Plex Mono',monospace;white-space:nowrap}
+  tr.section td{background:var(--indigo-tint);font-family:'Space Grotesk',sans-serif;font-weight:600;color:var(--indigo);letter-spacing:.01em}
+  td .rmk{display:block;margin-top:3px;font-size:11.5px;color:var(--ink-soft);border-left:2px solid var(--hi-deep);padding-left:7px}
+  tbody tr:not(.section):hover td{background:#fffdf0}
+
+  .foot{margin-top:26px;font-size:12px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:16px;line-height:1.6}
+  .foot strong{color:var(--ink)}
+  .hidden{display:none}
+  .no-remark .col-remark{display:none}
+  .normal-mode .col-split{display:none}
+  .split-mode .col-single{display:none}
+  .price-remarks{margin-top:16px;border-top:1px dashed var(--line);padding-top:14px}
+  .price-remarks h4{font-family:'Space Grotesk',sans-serif;font-size:13px;margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink)}
+  .price-remarks ul{margin:0;padding-left:18px}
+  .price-remarks li{font-size:13px;color:var(--ink-soft);margin:4px 0}
+  .price-remarks li b{color:var(--ink);font-family:'IBM Plex Mono',monospace;font-weight:500;margin-right:4px}
+  .tabbar{display:flex;gap:0;margin-bottom:18px;border-bottom:1px solid var(--line)}
+  .tab{border:none;border-bottom:2px solid transparent;border-radius:0;background:none;padding:9px 2px;margin-right:22px;color:var(--ink-soft);font-size:14px;cursor:pointer}
+  .tab:hover{background:none;color:var(--ink)}
+  .tab.active{color:var(--ink);border-bottom-color:var(--hi-deep)}
+  .qnote{margin-top:14px;font-size:12px;color:var(--ink-soft);line-height:1.65}
+  .qnote b{color:var(--ink)}
+  
+  /* ---- template box ---- */
+  .tmpl-box{margin-top:18px;border:1.5px dashed var(--line);border-radius:12px;padding:16px;background:var(--paper)}
+  .tmpl-box h3{font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;margin:0 0 14px;display:flex;align-items:center;gap:8px}
+  .tmpl-box h3 .badge{background:var(--hi);color:#1c1e10;font-size:11px;padding:2px 8px;border-radius:99px;font-family:'IBM Plex Mono',monospace;font-weight:600}
+  .tmpl-row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px}
+  .tmpl-field{flex:1;min-width:160px}
+  .tmpl-field label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);margin-bottom:5px}
+  .tmpl-field input{width:100%;font-family:'Inter',sans-serif;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#fff;color:var(--ink)}
+  .tmpl-field input:focus{outline:none;border-color:var(--indigo);box-shadow:0 0 0 3px var(--indigo-tint)}
+  .tmpl-upload{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .tmpl-upload label{cursor:pointer;border:1px solid var(--line);border-radius:8px;padding:8px 14px;font-size:13px;background:#fff;font-family:'Space Grotesk',sans-serif;font-weight:600}
+  .tmpl-upload label:hover{background:var(--paper)}
+  .tmpl-fname{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft)}
+  .tmpl-fname.ok{color:var(--green)}
+  .tmpl-field select{width:100%;font-family:'Inter',sans-serif;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#fff;color:var(--ink)}
+  .tmpl-field select:focus{outline:none;border-color:var(--indigo);box-shadow:0 0 0 3px var(--indigo-tint)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>BOQ <span class="mark">Extractor</span></h1>
+      <p class="sub">โยน PDF / Excel / รูป วางลงไป หรือแปะตารางข้อความ / <b>Paste รูปภาพ</b> แล้วให้ Gemini แกะออกมาเป็นตาราง BOQ — เอามาทั้งหมด รวม sub-item, section header และแยก HW / ค่าแรง <b>(รองรับการ Export พร้อมผูกสูตร Excel)</b></p>
+    </div>
+    <span class="badge" id="modelBadge">model · flash-lite</span>
+  </header>
+
+  <div class="panel">
+    <div class="row">
+      <div class="field" style="flex:2">
+        <label for="apiKey">Gemini API Key</label>
+        <input type="password" id="apiKey" placeholder="วาง API key ที่นี่ (AIza...)" autocomplete="off">
+        <div class="hint">ขอ key ฟรีที่ <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> · key อยู่ในเครื่องคุณเท่านั้น</div>
+      </div>
+      <div class="field" style="flex:1">
+        <label for="model">Model</label>
+        <select id="model">
+          <option value="gemini-3.1-flash-lite">3.1 Flash-Lite · ใหม่+ถูก (แนะนำ)</option>
+          <option value="gemini-3-flash-preview">3 Flash · แม่นสุด</option>
+          <option value="gemini-2.5-flash-lite">2.5 Flash-Lite</option>
+          <option value="gemini-2.5-flash">2.5 Flash</option>
+        </select>
+        <div class="hint">เอกสารยาก/ตารางซับซ้อน ลองสลับเป็น Flash</div>
+      </div>
+    </div>
+
+    <textarea id="textInput" placeholder="วางข้อความ, ตาราง (Copy จาก Excel/Word/Email) หรือกด Paste วางรูปภาพ (Ctrl+V) ลงที่นี่ได้เลย..."></textarea>
+    
+    <div class="or-divider">— หรือ —</div>
+
+    <div class="drop" id="drop">
+      <input type="file" id="file" class="hidden" accept=".pdf,.xlsx,.xls,.csv,.txt,.png,.jpg,.jpeg,.webp">
+      <div class="big" id="dropTitle">ลากไฟล์มาวาง หรือคลิกเพื่อเลือก</div>
+      <div class="small" id="dropMeta">PDF · XLSX · XLS · CSV · PNG · JPG</div>
+    </div>
+
+    <div class="actions">
+      <button class="primary" id="run" disabled>แกะ BOQ</button>
+      <button id="clearInput" style="display:none;">เคลียร์ข้อมูล</button>
+      <span class="status" id="status"></span>
+    </div>
+  </div>
+
+  <div class="panel hidden" id="results">
+    <div class="tabbar">
+      <button class="tab active" data-view="raw">BOQ ดิบ (แยก HW / ค่าแรง)</button>
+      <button class="tab" data-view="quote">BOQ สำหรับ Quotation</button>
+    </div>
+
+    <div id="viewRaw">
+      <div class="summary">
+        <div>
+          <div class="grand" id="grand">—</div>
+          <div class="count" id="count"></div>
+        </div>
+        <div class="tbtools">
+          <button id="copyBtn">คัดลอกตาราง</button>
+          <button id="csvBtn">CSV</button>
+          <button class="primary" id="xlsxBtn">Export Excel</button>
+        </div>
+      </div>
+      <div class="tablewrap">
+        <table id="table"><thead><tr>
+          <th>Item No</th><th>PN</th><th>Description</th>
+          <th class="num">QTY</th>
+          <th class="num col-single">Unit Cost</th>
+          <th class="num col-split">HW Unit</th><th class="num col-split">HW Total</th>
+          <th class="num col-split">Labour Unit</th><th class="num col-split">Labour Total</th>
+          <th class="num">Total Cost</th>
+          <th class="col-remark">Remark</th>
+        </tr></thead><tbody id="tbody"></tbody></table>
+      </div>
+      <div class="price-remarks hidden" id="priceRemarks"></div>
+    </div>
+
+    <div id="viewQuote" class="hidden">
+      <div class="row" style="margin-bottom:14px; background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px 16px; align-items:center;">
+        <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14px; color:var(--indigo); margin-right:8px;">⚙️ Pricing Config</div>
+        <div class="field" style="flex:none; width:110px; min-width:auto;">
+          <label style="margin-bottom:4px">1. GP % (Markup)</label>
+          <input type="number" id="cfgGP" value="8.8" step="0.1" style="padding:6px 10px;">
+        </div>
+        <div class="field" style="flex:none; width:110px; min-width:auto;">
+          <label style="margin-bottom:4px">2. Uptime %</label>
+          <input type="number" id="cfgUptime" value="10" step="1" style="padding:6px 10px;">
+        </div>
+        <div class="field" style="flex:none; width:100px; min-width:auto;">
+          <label style="margin-bottom:4px">3. Roundup</label>
+          <select id="cfgRoundup" style="padding:6px 10px;">
+            <option value="yes" selected>Yes</option>
+            <option value="no">No</option>
+          </select>
+        </div>
+        <div class="hint" style="margin:0; margin-left:auto; text-align:right;">
+          <span style="display:block; font-weight:600; color:var(--ink)">Selling Price Formula</span>
+          <code>Calculated Included Uptime and logistic Fee</code>
+        </div>
+      </div>
+
+      <div class="summary">
+        <div>
+          <div class="grand" id="grandQ">—</div>
+          <div class="count" id="countQ"></div>
+        </div>
+        <div class="tbtools">
+          <button id="copyBtnQ">คัดลอกตาราง</button>
+          <button class="primary" id="xlsxBtnQ">Export BOQ</button>
+        </div>
+      </div>
+      <div class="tablewrap" style="max-height: 500px;">
+        <table id="tableQ"><thead><tr>
+          <th>Item No</th><th>PN</th><th>Description</th>
+          <th class="num">Qty</th><th>Unit</th><th class="num">Unit Cost</th><th class="num">Total Cost</th>
+          <th class="num" style="background:var(--indigo); border-left:2px solid #fff">Sell Unit</th>
+          <th class="num" style="background:var(--indigo);">Sell Total</th>
+        </tr></thead><tbody id="tbodyQ"></tbody></table>
+      </div>
+      <div class="price-remarks hidden" id="priceRemarksQ"></div>
+      <div class="qnote"><b>Total Cost</b> = วัสดุ+ค่าแรงรวม · <b>Unit Cost</b> = Total÷Qty · ราคา Selling คำนวณแบบ Real-time ตาม GP และ Uptime ด้านบน</div>
+
+      <div class="tmpl-box">
+        <h3>Export เข้า Template PL <span class="badge">xlsx</span></h3>
+        <div class="tmpl-upload">
+          <label for="tmplFile">📂 เลือก Template .xlsx</label>
+          <input type="file" id="tmplFile" accept=".xlsx" class="hidden">
+          <span class="tmpl-fname" id="tmplFname">ยังไม่ได้อัปโหลด</span>
+        </div>
+        <div class="tmpl-row hidden" id="tmplSheetRow">
+          <div class="tmpl-field">
+            <label>ชีทที่ต้องการกรอก</label>
+            <select id="tmplSheet"></select>
+          </div>
+        </div>
+        <div class="tmpl-row">
+          <div class="tmpl-field" style="flex:3">
+            <label>E12 & F26 — Project Name / Quotation For (auto จาก BOQ)</label>
+            <input type="text" id="tmplProject" placeholder="e.g. Quotation for NEW CCTV System — DANA">
+          </div>
+        </div>
+        
+        <div class="tmpl-row" style="background: var(--indigo-tint); padding: 12px; border-radius: 8px; margin-bottom: 14px;">
+          <div class="tmpl-field" style="flex:1;">
+            <label>🤖 Auto-Fill Contact (แปะอีเมล/ลายเซ็นลูกค้าที่นี่เพื่อแยกข้อมูลอัตโนมัติ)</label>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="autoContactInput" placeholder="Paste ชื่อบริษัท เบอร์โทร อีเมล... แล้วกดปุ่ม 🪄" style="background:#fff;">
+              <button id="btnExtractContact" type="button" style="padding: 8px 14px; white-space:nowrap;">🪄 แยกข้อมูล</button>
+            </div>
+            <span class="status" id="contactStatus" style="margin-top:6px; display:block;"></span>
+          </div>
+        </div>
+
+        <div class="tmpl-row">
+          <div class="tmpl-field"><label>CO / Company (E13)</label><input type="text" id="tmplCompany" placeholder="ชื่อบริษัทลูกค้า"></div>
+          <div class="tmpl-field"><label>Attn (E14)</label><input type="text" id="tmplAttn" placeholder="ชื่อผู้ติดต่อ"></div>
+          <div class="tmpl-field"><label>Tel (E15)</label><input type="text" id="tmplTel" placeholder="เบอร์โทร"></div>
+          <div class="tmpl-field"><label>E-mail (E16)</label><input type="text" id="tmplEmail" placeholder="email@company.com"></div>
+        </div>
+        <div class="hint" style="margin-top:8px;">* ระบบจะนำ Unit Cost ไปกรอกในช่อง R และคำนวณ <b>Selling Price อัตโนมัติลงในช่อง U และ V</b> ตามค่า GP/Uptime ด้านบน</div>
+        <button class="primary" id="tmplExportBtn" style="margin-top:8px">⬇ Export NTT Template</button>
+        <span class="status" id="tmplStatus" style="margin-left:12px"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <strong>ความเป็นส่วนตัว:</strong> ไฟล์ถูกส่งตรงจาก browser ไปที่ Gemini API ด้วย key ของคุณเอง ไม่ผ่าน server ใคร —
+    แต่ถ้าใช้ <strong>free tier</strong> Google อาจนำข้อมูลไป train ได้ สำหรับ BOQ ลูกค้า/vendor ที่เป็นความลับ แนะนำเปิด billing (paid tier) ราคายังถูกมาก
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  let fileObj = null;
+
+  try { const k = localStorage.getItem('gemini_key'); if(k) $('apiKey').value = k; } catch(e){}
+  $('apiKey').addEventListener('input', e => { try{ localStorage.setItem('gemini_key', e.target.value.trim()); }catch(_){} });
+
+  function updateBadge(){ $('modelBadge').textContent = 'model · ' + $('model').value.replace('gemini-',''); }
+  $('model').addEventListener('change', updateBadge);
+  updateBadge();
+
+  function checkReady() {
+    const textVal = $('textInput').value.trim();
+    const isReady = fileObj !== null || textVal !== '';
+    $('run').disabled = !isReady;
+    $('clearInput').style.display = isReady ? 'inline-block' : 'none';
+  }
+  
+  $('textInput').addEventListener('input', checkReady);
+
+  $('clearInput').addEventListener('click', () => {
+    $('textInput').value = '';
+    fileObj = null;
+    drop.classList.remove('has');
+    $('dropTitle').textContent = 'ลากไฟล์มาวาง หรือคลิกเพื่อเลือก';
+    $('dropMeta').textContent = 'PDF · XLSX · XLS · CSV · PNG · JPG';
+    setStatus('');
+    checkReady();
+  });
+
+  const drop = $('drop');
+  drop.addEventListener('click', () => $('file').click());
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', e => {
+    e.preventDefault(); drop.classList.remove('over');
+    if(e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+  });
+  $('file').addEventListener('change', e => { if(e.target.files.length) setFile(e.target.files[0]); $('file').value=''; });
+
+  window.addEventListener('paste', e => {
+    const items = (e.clipboardData || window.clipboardData).items;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        const ext = file.type.split('/')[1] || 'png';
+        const pastedFile = new File([file], `pasted_image_${new Date().getTime()}.${ext}`, { type: file.type });
+        setFile(pastedFile);
+        
+        if(document.activeElement === $('textInput')) {
+            $('textInput').value = '[รับรูปภาพจาก Clipboard เรียบร้อยแล้ว - กดปุ่ม "แกะ BOQ" ได้เลย]';
+        }
+        break; 
+      }
+    }
+  });
+
+  function setFile(f){
+    fileObj = f;
+    drop.classList.add('has');
+    $('dropTitle').textContent = f.name;
+    $('dropMeta').textContent = (f.size/1024/1024).toFixed(2) + ' MB · ' + (f.type || 'unknown');
+    checkReady();
+    setStatus('');
+  }
+  function setStatus(msg, err){ const s=$('status'); s.textContent=msg; s.className='status'+(err?' err':''); }
+
+  const readAsDataURL = f => new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(f);});
+  const readAsText = f => new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsText(f);});
+  const readAsArrayBuffer = f => new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsArrayBuffer(f);});
+
+  async function excelToText(f){
+    const buf = await readAsArrayBuffer(f);
+    const wb = XLSX.read(buf, {type:'array'});
+    let out = '';
+    wb.SheetNames.forEach(name => {
+      out += '\n===== SHEET: ' + name + ' =====\n';
+      out += XLSX.utils.sheet_to_csv(wb.Sheets[name], {blankrows:false});
+    });
+    return out;
+  }
+
+  const PROMPT = `You are a precise BOQ (Bill of Quantities) extraction engine for an enterprise IT/network sales team.
+Extract EVERY line item from the document into structured rows. Rules:
+- Include ALL items, including bundled/accessory sub-items even when their price is 0 or "-" (cables, licenses, config, MA, etc). Do NOT drop anything.
+- Preserve the original Item/Line number exactly (e.g. 1.0, 1.0.1, A1, 1). If absent, number sequentially.
+- For section / group / category divider rows (e.g. "Group Name: ...", "ส่วนที่ 1", "Part A", a single letter A/B/C with a bold heading like "CCTV : ...", "Switch POE"), set is_section=true, put the clean section title in description, and leave all other fields empty.
+- Part number (pn): Actively extract the Part Number, P/N, Material Code, Product Code, or Model Number. It might be in a dedicated column or embedded anywhere in the item description (e.g., "- Model: XXX", "P/N: YYY"). Always populate the "pn" field if a part/model number exists.
+- HARDWARE vs LABOUR split (IMPORTANT — Thai system-integrator BOQs use this): the price area is split into TWO blocks side by side — "Material" (Unit/Price + Total Price) and "Labour"/"ค่าแรง" (Unit/Price + Total Price). So a single row can have up to FOUR numeric price values in this order: [Material Unit][Material Total][Labour Unit][Labour Total]. You MUST read all four and never collapse them. Map: Material Unit→unit_price, Material Total→total, Labour Unit→labour_unit, Labour Total→labour_total. A "-" means that specific cell is empty (NOT zero) — still keep the others. Fill labour_unit/labour_total WHENEVER the row's labour block has a value, even if the material block is "-". If the BOQ has only one price block, use unit_price/total and leave labour fields empty.
+- Extract the unit of measure for each item (e.g. set., lot., pts., month, trip, year, EA, License) into the "unit" field. Common patterns: if Q'ty has a unit suffix (set./lot./pts.), capture it; otherwise infer from context. Leave empty for section rows.
+- Put any remark / note / หมายเหตุ / comment for a row into the separate "remark" field VERBATIM — preserve the original language and exact wording, do not translate, do not summarize, do not classify. Leave empty if there is none.
+- If a Subject / หัวเรื่อง / category column exists per row, prepend it to the description (e.g. "Network: ...").
+- Keep Thai and English text exactly as-is. Do not translate.
+- Strip currency symbols from numeric fields but keep the value (commas ok). Exclude grand-total / sub-total / VAT summary rows from items.
+- Identify the project title from the document header, "Project :" field, document subject, or filename. Return it as "project_title" in format "Quotation for [System/Product] — [Customer]". Example: "Quotation for NEW CCTV Camera & PTZ System — DANA". Empty string if not visible.
+
+Return ONLY the structured JSON object.`;
+
+  const SCHEMA = { type:"OBJECT", properties:{
+    project_title:{type:"STRING", description:"Project title inferred from the BOQ document header, 'Project :' field, or subject. Format: 'Quotation for [System/Product] — [Customer]'."},
+    items:{ type:"ARRAY", items:{ type:"OBJECT",
+      propertyOrdering:["is_section","item_no","pn","description","qty","unit","unit_price","total","labour_unit","labour_total","remark"],
+      properties:{
+        is_section:{type:"BOOLEAN"},
+        item_no:{type:"STRING"},
+        pn:{type:"STRING", description:"Part Number, P/N, Model Number, or Material code. Always extract this if present in a column or within the description."},
+        description:{type:"STRING"},
+        qty:{type:"STRING"},
+        unit:{type:"STRING"},
+        unit_price:{type:"STRING"},
+        total:{type:"STRING"},
+        labour_unit:{type:"STRING"},
+        labour_total:{type:"STRING"},
+        remark:{type:"STRING"}
+      }, required:["description"] } }
+  }, required:["items"] };
+
+  $('run').addEventListener('click', async () => {
+    const key = $('apiKey').value.trim();
+    let textVal = $('textInput').value.trim();
+    if(textVal.includes('[รับรูปภาพจาก Clipboard เรียบร้อยแล้ว')) textVal = '';
+
+    if(!key){ setStatus('ใส่ Gemini API key ก่อน', true); return; }
+    if(!fileObj && !textVal){ setStatus('เลือกไฟล์ หรือวางข้อความ/รูปภาพก่อน', true); return; }
+
+    $('run').disabled = true;
+    $('run').innerHTML = '<span class="spinner"></span>กำลังแกะ...';
+    setStatus('กำลังเตรียมข้อมูล...');
+
+    try {
+      const parts = [{ text: PROMPT }];
+
+      if(textVal){
+        parts.push({ text: 'PASTED TEXT/TABLE CONTENT:\n' + textVal });
+      }
+
+      if(fileObj){
+        const name = fileObj.name.toLowerCase();
+        if(name.endsWith('.pdf')){
+          if(fileObj.size > 18*1024*1024) throw new Error('PDF ใหญ่เกิน 18MB — ลองแยกไฟล์');
+          parts.push({ inline_data:{ mime_type:'application/pdf', data: await readAsDataURL(fileObj) } });
+        } else if(/\.(png|jpe?g|webp)$/.test(name)){
+          const mt = name.endsWith('.png')?'image/png':name.endsWith('.webp')?'image/webp':'image/jpeg';
+          parts.push({ inline_data:{ mime_type:mt, data: await readAsDataURL(fileObj) } });
+        } else if(/\.(xlsx|xls)$/.test(name)){
+          setStatus('กำลังอ่าน Excel...');
+          parts.push({ text: 'DOCUMENT CONTENT (CSV per sheet):\n' + await excelToText(fileObj) });
+        } else { // csv / txt
+          parts.push({ text: 'DOCUMENT CONTENT:\n' + await readAsText(fileObj) });
+        }
+      }
+
+      setStatus('ส่งให้ Gemini ประมวลผล...');
+      const model = $('model').value;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+      const resp = await fetch(url, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          contents:[{ role:'user', parts }],
+          generationConfig:{ responseMimeType:'application/json', responseSchema: SCHEMA, temperature:0 }
+        })
+      });
+
+      if(!resp.ok){
+        let msg = 'HTTP ' + resp.status;
+        try{ const e = await resp.json(); msg = e.error?.message || msg; }catch(_){}
+        throw new Error(msg);
+      }
+      const data = await resp.json();
+      const txt = (data.candidates?.[0]?.content?.parts || []).map(p=>p.text||'').join('');
+      if(!txt) throw new Error('ไม่มีข้อมูลตอบกลับ (อาจติด safety filter หรือ quota)');
+
+      let parsed;
+      try { parsed = JSON.parse(txt); }
+      catch(_){ parsed = JSON.parse(txt.replace(/```json|```/g,'').trim()); }
+      const rows = Array.isArray(parsed) ? parsed : (parsed.items || []);
+      if(!rows.length) throw new Error('แกะไม่เจอรายการ ลองสลับเป็น model Flash');
+      
+      const projTitle = (parsed.project_title||'').trim();
+      if(projTitle && !$('tmplProject').value.trim()) $('tmplProject').value = projTitle;
+
+      render(rows);
+      setStatus('เสร็จแล้ว ✓');
+    } catch(err){
+      setStatus('ผิดพลาด: ' + err.message, true);
+    } finally {
+      $('run').disabled = false;
+      $('run').textContent = 'แกะ BOQ';
+    }
+  });
+
+  let lastRows = [], lastPriceRemarks = [], splitMode = false;
+  const numFmt = n => n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const parseNum = v => { if(v==null) return NaN; const n=parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?NaN:n; };
+
+  const PRICE_KW = ['ราคายังไม่รวม','ราคาไม่รวม','ราคารวม','ปรับราคา','ราคาอาจเปลี่ยน','ก่อนหักส่วนลด','หลังหักส่วนลด','vat','tax','before discount','after discount','subject to change','price pending','tbd price','estimated price'];
+  const isPriceRemark = s => { const t = String(s).toLowerCase(); return PRICE_KW.some(k => t.includes(k)); };
+  const has = v => v!=null && String(v).trim()!=='' && String(v).trim()!=='-';
+
+  function render(rows){
+    lastRows = rows;
+    lastPriceRemarks = [];
+    splitMode = rows.some(r => !r.is_section && (has(r.labour_unit) || has(r.labour_total)));
+    renderRaw();
+    renderQuote();
+    $('results').classList.remove('hidden');
+    $('results').scrollIntoView({behavior:'smooth',block:'start'});
+  }
+
+  function fillPriceRemarks(elId){
+    const pr = $(elId);
+    if(lastPriceRemarks.length){
+      pr.innerHTML = '<h4>Price Remarks</h4><ul>' +
+        lastPriceRemarks.map(p => `<li><b>Item ${esc(p.item)}:</b>${esc(p.text)}</li>`).join('') + '</ul>';
+      pr.classList.remove('hidden');
+    } else { pr.innerHTML=''; pr.classList.add('hidden'); }
+  }
+
+  function renderRaw(){
+    const rows = lastRows;
+    const tb = $('tbody'); tb.innerHTML='';
+    let itemCount=0, matSum=0, labSum=0, hasRemark=false;
+
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      if(r.is_section){
+        tr.className='section'; tr.innerHTML = `<td colspan="11">▶ ${esc(r.description||'')}</td>`; tb.appendChild(tr); return;
+      }
+      itemCount++;
+      const label = r.item_no || String(itemCount);
+      const mat = parseNum(r.total), lab = parseNum(r.labour_total);
+      if(!isNaN(mat)) matSum += mat; if(!isNaN(lab)) labSum += lab;
+      const combined = (isNaN(mat)?0:mat) + (isNaN(lab)?0:lab);
+
+      let cellRemark = ''; const rmk = (r.remark||'').trim();
+      if(rmk){
+        if(isPriceRemark(rmk)) lastPriceRemarks.push({ item: label, text: rmk });
+        else { cellRemark = rmk; hasRemark = true; }
+      }
+      tr.innerHTML =
+        `<td class="mono">${esc(r.item_no||'')}</td><td class="mono">${esc(r.pn||'')}</td><td>${esc(r.description||'')}</td>`+
+        `<td class="num mono">${esc(r.qty||'')}</td><td class="num mono col-single">${fmtCell(r.unit_price)}</td>`+
+        `<td class="num mono col-split">${fmtCell(r.unit_price)}</td><td class="num mono col-split">${fmtCell(r.total)}</td>`+
+        `<td class="num mono col-split">${fmtCell(r.labour_unit)}</td><td class="num mono col-split">${fmtCell(r.labour_total)}</td>`+
+        `<td class="num mono">${combined?numFmt(combined):''}</td><td class="col-remark">${esc(cellRemark)}</td>`;
+      tb.appendChild(tr);
+    });
+
+    const tbl = $('table');
+    tbl.className = splitMode ? 'split-mode' : 'normal-mode';
+    tbl.classList.toggle('no-remark', !hasRemark);
+    fillPriceRemarks('priceRemarks');
+
+    const grand = matSum + labSum; const secCount = rows.length - itemCount;
+    let count = `พบ ${itemCount} รายการ` + (secCount ? ` · ${secCount} section` : '');
+    if(splitMode){
+      count += ` &nbsp;·&nbsp; วัสดุ ${numFmt(matSum)} · ค่าแรง ${numFmt(labSum)}`;
+      $('grand').innerHTML = `${numFmt(grand)} <small>ยอดรวมก่อน VAT (THB)</small>`; $('count').innerHTML = count;
+    } else {
+      $('grand').innerHTML = `${numFmt(grand)} <small>ยอดรวม (THB)</small>`; $('count').textContent = count;
+    }
+  }
+
+  function quoteCombined(r){ const mat = parseNum(r.total), lab = parseNum(r.labour_total); return (isNaN(mat)?0:mat) + (isNaN(lab)?0:lab); }
+  function quoteUnit(r, combined){ const qty = parseNum(r.qty); return (!isNaN(qty) && qty!==0) ? combined/qty : ''; }
+  function quoteDesc(r){ let desc = r.description||''; const rmk = (r.remark||'').trim(); if(rmk && !isPriceRemark(rmk)) desc += ` (หมายเหตุ: ${rmk})`; return desc; }
+
+  // ผูก Event Listener ให้คำนวณใหม่เมื่อมีการเปลี่ยนค่าต่างๆ
+  $('cfgGP').addEventListener('input', renderQuote);
+  $('cfgUptime').addEventListener('input', renderQuote);
+  $('cfgRoundup').addEventListener('change', renderQuote);
+
+  function quoteRows(){
+    const rows=[];
+    const gp = parseFloat($('cfgGP').value) || 0;
+    const uptime = parseFloat($('cfgUptime').value) || 0;
+    const doRoundup = $('cfgRoundup').value === 'yes';
+
+    lastRows.forEach(r=>{
+      if(r.is_section){ rows.push({section:true, desc:'▶ '+(r.description||'')}); return; }
+      
+      const combined = quoteCombined(r); 
+      const unitPriceVal = quoteUnit(r,combined);
+      
+      let sellUnit = '', sellTot = '';
+      if (unitPriceVal !== '') {
+          // คำนวณสูตร: Unit cost /(1-GP%)*1.02*(1+Uptime%)
+          let rawSellUnit = (unitPriceVal / (1 - (gp/100))) * 1.02 * (1 + (uptime/100));
+          sellUnit = doRoundup ? Math.ceil(rawSellUnit) : rawSellUnit;
+          
+          const qNum = parseNum(r.qty);
+          if (!isNaN(qNum)) sellTot = sellUnit * qNum;
+      }
+
+      rows.push({ 
+        item:r.item_no||'', pn:r.pn||'', desc:quoteDesc(r), qty:r.qty||'', unitType:r.unit||'', 
+        unitPrice: unitPriceVal!==''?unitPriceVal:'', total: combined||'',
+        sellUnit: sellUnit, sellTotal: sellTot, qNum: parseNum(r.qty)
+      });
+    });
+    return rows;
+  }
+
+  function renderQuote(){
+    const tb = $('tbodyQ'); tb.innerHTML=''; 
+    let itemCount=0, grand=0, grandSell=0;
+    
+    quoteRows().forEach(r=>{
+      const tr=document.createElement('tr');
+      if(r.section){ tr.className='section'; tr.innerHTML = `<td colspan="9">${esc(r.desc)}</td>`; tb.appendChild(tr); return; }
+      itemCount++;
+      
+      if(r.total) grand += parseNum(r.total);
+      if(r.sellTotal) grandSell += parseNum(r.sellTotal);
+
+      tr.innerHTML =
+        `<td class="mono">${esc(r.item)}</td><td class="mono">${esc(r.pn)}</td><td>${esc(r.desc)}</td>`+
+        `<td class="num mono">${esc(r.qty)}</td><td class="mono">${esc(r.unitType)}</td>`+
+        `<td class="num mono">${r.unitPrice!==''?numFmt(r.unitPrice):''}</td><td class="num mono">${r.total!==''?numFmt(r.total):''}</td>`+
+        `<td class="num mono" style="color:var(--green);font-weight:600;border-left:2px solid var(--line);background:#f2fff5">${r.sellUnit!==''?numFmt(r.sellUnit):''}</td>`+
+        `<td class="num mono" style="color:var(--green);font-weight:600;background:#f2fff5">${r.sellTotal!==''?numFmt(r.sellTotal):''}</td>`;
+      tb.appendChild(tr);
+    });
+    
+    $('grandQ').innerHTML = `${numFmt(grand)} <small>Cost (THB)</small> <span style="color:var(--green);margin-left:16px">${numFmt(grandSell)} <small>Selling (THB)</small></span>`; 
+    $('countQ').textContent = `พบ ${itemCount} รายการ`; 
+    fillPriceRemarks('priceRemarksQ');
+  }
+
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active'); const v = t.dataset.view;
+    $('viewRaw').classList.toggle('hidden', v!=='raw'); $('viewQuote').classList.toggle('hidden', v!=='quote');
+  }));
+
+  function fmtCell(v){ if(!has(v)) return ''; const n=parseNum(v); return isNaN(n)?esc(v):numFmt(n); }
+  function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  const numOrBlank = v => { const n=parseNum(v); return isNaN(n)?'':n; };
+  
+  function toAOA(){
+    const head = splitMode ? ['Item No','PN','Description','QTY','HW Unit','HW Total','Labour Unit','Labour Total','Total','Remark'] : ['Item No','PN','Description','QTY','Unit Price','Total','Remark'];
+    const W = head.length; const pad = a => { while(a.length<W) a.push(''); return a; }; const aoa = [head];
+    let rowIndex = 2; // For formula tracking
+    lastRows.forEach(r=>{
+      if(r.is_section){ aoa.push(pad(['','','▶ '+(r.description||'')])); rowIndex++; return; }
+      const rmk=(r.remark||'').trim(); const cell = (rmk && !isPriceRemark(rmk)) ? rmk : '';
+      const mat=parseNum(r.total), lab=parseNum(r.labour_total); const combined=(isNaN(mat)?0:mat)+(isNaN(lab)?0:lab);
+      
+      const qNum = parseNum(r.qty);
+      const outQty = isNaN(qNum) ? (r.qty||'') : qNum; 
+
+      if(splitMode) {
+        let hwTot = numOrBlank(r.total);
+        if (!isNaN(qNum) && !isNaN(parseNum(r.unit_price))) hwTot = { t:'n', f:`D${rowIndex}*E${rowIndex}`, v:mat||0 };
+
+        let labTot = numOrBlank(r.labour_total);
+        if (!isNaN(qNum) && !isNaN(parseNum(r.labour_unit))) labTot = { t:'n', f:`D${rowIndex}*G${rowIndex}`, v:lab||0 };
+
+        let comb = combined || '';
+        if (!isNaN(mat) || !isNaN(lab)) comb = { t:'n', f:`F${rowIndex}+H${rowIndex}`, v:combined||0 };
+
+        aoa.push([r.item_no||'', r.pn||'', r.description||'', outQty, numOrBlank(r.unit_price), hwTot, numOrBlank(r.labour_unit), labTot, comb, cell]);
+      } else {
+        let tot = numOrBlank(r.total);
+        if (!isNaN(qNum) && !isNaN(parseNum(r.unit_price))) tot = { t:'n', f:`D${rowIndex}*E${rowIndex}`, v:mat||0 };
+        aoa.push([r.item_no||'', r.pn||'', r.description||'', outQty, numOrBlank(r.unit_price), tot, cell]);
+      }
+      rowIndex++;
+    });
+    if(lastPriceRemarks.length){ aoa.push(pad([''])); aoa.push(pad(['Price Remarks:'])); lastPriceRemarks.forEach(p=>aoa.push(pad(['','',`Item ${p.item}: ${p.text}`]))); }
+    return aoa;
+  }
+  
+  $('xlsxBtn').addEventListener('click', ()=>{
+    const ws = XLSX.utils.aoa_to_sheet(toAOA());
+    ws['!cols'] = splitMode ? [{wch:9},{wch:20},{wch:55},{wch:6},{wch:12},{wch:13},{wch:12},{wch:13},{wch:14},{wch:28}] : [{wch:9},{wch:20},{wch:60},{wch:7},{wch:14},{wch:14},{wch:30}];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'BOQ'); XLSX.writeFile(wb,'BOQ_extract.xlsx');
+  });
+  
+  $('csvBtn').addEventListener('click', ()=>{
+    const ws = XLSX.utils.aoa_to_sheet(toAOA()); const blob = new Blob(['\ufeff'+XLSX.utils.sheet_to_csv(ws)],{type:'text/csv;charset=utf-8'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='BOQ_extract.csv'; a.click();
+  });
+  
+  async function buildQuoteWorkbook(){
+    const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('BOQ');
+    ws.columns=[{width:10},{width:20},{width:60},{width:8},{width:10},{width:15},{width:15},{width:18},{width:18}];
+    const thin={top:{style:'thin'},left:{style:'thin'},bottom:{style:'thin'},right:{style:'thin'}};
+    const head=ws.addRow(['Item No','PN','Description','Qty','Unit','Unit Cost','Total Cost','Selling Unit Price','Total Selling Price']); head.height=20;
+    head.eachCell({includeEmpty:true},c=>{ c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF1F4E79'}}; c.font={bold:true,color:{argb:'FFFFFFFF'},name:'Calibri',size:11}; c.alignment={horizontal:'center',vertical:'middle'}; c.border=thin; });
+    
+    let dataRow=2;
+    quoteRows().forEach(r=>{
+      if(r.section){
+        const row=ws.addRow(['','',r.desc,'','','','','','']);
+        row.eachCell({includeEmpty:true},(c,col)=>{ if(col>9) return; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFD9E1F2'}}; c.border=thin; if(col===3) c.font={bold:true,name:'Calibri',size:10}; });
+        dataRow++; return;
+      }
+      
+      const qNum = r.qNum;
+      const outQty = isNaN(qNum) ? r.qty : qNum;
+      
+      const row=ws.addRow([r.item, r.pn, r.desc, outQty, r.unitType, r.unitPrice, '', r.sellUnit, '']);
+      const alt=(dataRow%2===0);
+      row.eachCell({includeEmpty:true},(c,col)=>{ 
+        if(col>9) return; 
+        c.border=thin; 
+        c.alignment={vertical:'middle', horizontal: col>=4?'right':'left'}; 
+        if(alt) c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFEBF3FB'}}; 
+        if(col>=6 && col<=9) c.numFmt='#,##0.00';
+      });
+      
+      if (!isNaN(qNum) && r.unitPrice !== '') {
+        row.getCell(7).value = { formula: `D${dataRow}*F${dataRow}`, result: r.total };
+        row.getCell(9).value = { formula: `D${dataRow}*H${dataRow}`, result: r.sellTotal };
+      } else {
+        row.getCell(7).value = r.total;
+        row.getCell(9).value = r.sellTotal;
+      }
+      dataRow++;
+    });
+    return wb;
+  }
+  
+  $('xlsxBtnQ').addEventListener('click', async ()=>{
+    const b=$('xlsxBtnQ'), t=b.textContent; b.disabled=true; b.textContent='กำลังสร้าง...';
+    try{
+      const wb=await buildQuoteWorkbook(); const buf=await wb.xlsx.writeBuffer();
+      const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='BOQ_for_NTT_Quotation.xlsx'; a.click();
+    }catch(e){ alert('สร้างไฟล์ไม่สำเร็จ: '+e.message); } finally{ b.disabled=false; b.textContent=t; }
+  });
+  
+  $('copyBtnQ').addEventListener('click', ()=>{
+    const head=['Item No','PN','Description','Qty','Unit','Unit Cost','Total Cost','Selling Unit','Selling Total']; 
+    const lines=[head.join('\t')];
+    quoteRows().forEach(r=>{
+      if(r.section) lines.push(['','',r.desc,'','','','','',''].join('\t'));
+      else lines.push([r.item,r.pn,r.desc,r.qty,r.unitType,r.unitPrice,r.total,r.sellUnit,r.sellTotal].join('\t'));
+    });
+    navigator.clipboard.writeText(lines.join('\n')).then(()=>{ const b=$('copyBtnQ'); b.textContent='คัดลอกแล้ว ✓'; setTimeout(()=>b.textContent='คัดลอกตาราง',1500); });
+  });
+
+  // 🤖 ฟังก์ชัน Auto-Fill Contact ดึงข้อมูลลูกค้า
+  $('btnExtractContact').addEventListener('click', async () => {
+    const rawText = $('autoContactInput').value.trim();
+    const key = $('apiKey').value.trim();
+    const st = $('contactStatus');
+    
+    if(!rawText) { 
+      st.textContent = 'ใส่ข้อมูลลูกค้าก่อนครับ'; st.style.color = 'var(--danger)'; 
+      return; 
+    }
+    if(!key) { 
+      st.textContent = 'กรุณาใส่ API Key ด้านบนสุดก่อนนะครับ'; st.style.color = 'var(--danger)'; 
+      return; 
+    }
+
+    const btn = $('btnExtractContact');
+    const oldText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>กำลังสกัด...';
+    st.textContent = 'กำลังให้ AI แยกข้อมูล...';
+    st.style.color = 'var(--ink-soft)';
+
+    const PROMPT = `Extract contact information from the following text into JSON format. 
+    Look for Thai or English text.
+    Keys required:
+    - company: Company name or organization.
+    - name: Contact person's name (Attn).
+    - tel: Telephone number(s) or mobile.
+    - email: Email address.
+    If a field is missing, return an empty string "".
+
+    Text to extract:
+    ${rawText}`;
+
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${$('model').value}:generateContent?key=${encodeURIComponent(key)}`;
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: PROMPT }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: "OBJECT",
+              properties: {
+                company: { type: "STRING" },
+                name: { type: "STRING" },
+                tel: { type: "STRING" },
+                email: { type: "STRING" }
+              }
+            },
+            temperature: 0
+          }
+        })
+      });
+
+      if (!resp.ok) throw new Error('API Error ' + resp.status);
+      const data = await resp.json();
+      const txt = data.candidates[0].content.parts[0].text;
+      
+      let parsed;
+      try { parsed = JSON.parse(txt); }
+      catch(_){ parsed = JSON.parse(txt.replace(/```json|```/g,'').trim()); }
+
+      if(parsed.company) $('tmplCompany').value = parsed.company;
+      if(parsed.name) $('tmplAttn').value = parsed.name;
+      if(parsed.tel) $('tmplTel').value = parsed.tel;
+      if(parsed.email) $('tmplEmail').value = parsed.email;
+
+      st.textContent = '✓ เติมข้อมูลลงช่องเรียบร้อยครับ';
+      st.style.color = 'var(--green)';
+      $('autoContactInput').value = ''; // เคลียร์ช่อง input
+      
+    } catch(e) {
+      st.textContent = 'ผิดพลาด: ' + e.message;
+      st.style.color = 'var(--danger)';
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = oldText;
+    }
+  });
+
+  let templateBuf = null;
+  $('tmplFile').addEventListener('change', e=>{
+    const f=e.target.files[0]; if(!f) return;
+    const reader=new FileReader();
+    reader.onload=()=>{
+      templateBuf=reader.result;
+      try{
+        const wb=XLSX.read(new Uint8Array(reader.result),{type:'array',bookSheets:true});
+        const sel=$('tmplSheet'); sel.innerHTML='';
+        wb.SheetNames.forEach(n=>{
+          const opt=document.createElement('option'); opt.value=n; opt.textContent=n;
+          if(n==='Quotation-NTT-AI') opt.selected=true;
+          sel.appendChild(opt);
+        });
+        $('tmplSheetRow').classList.remove('hidden');
+      }catch(e2){ console.warn('sheet names error:',e2); }
+      const el=$('tmplFname'); el.textContent='✓ '+f.name; el.className='tmpl-fname ok';
+    };
+    reader.readAsArrayBuffer(f);
+  });
+  
+  async function fillNTTTemplate(){
+    if(!lastRows.length) throw new Error('แกะ BOQ ก่อน แล้วค่อย export');
+    if(!templateBuf) throw new Error('อัปโหลด template .xlsx ก่อน');
+    const wb=new ExcelJS.Workbook();
+    await wb.xlsx.load(templateBuf);
+    const sheetName=$('tmplSheet').value||'Quotation-NTT-AI';
+    const ws=wb.getWorksheet(sheetName);
+    if(!ws) throw new Error(`ไม่พบชีต "${sheetName}"`);
+    
+    ws.getCell('K6').value  = new Date();
+    
+    // ดึงค่าโปรเจกต์จาก input แล้วเอาไปใส่ทั้ง F26 และ E12 
+    const projectName = $('tmplProject').value.trim()||'';
+    ws.getCell('F26').value = projectName;
+    ws.getCell('E12').value = projectName; 
+    
+    ws.getCell('E13').value = $('tmplCompany').value.trim()||'';
+    ws.getCell('E14').value = $('tmplAttn').value.trim()||'';
+    ws.getCell('E15').value = $('tmplTel').value.trim()||'';
+    ws.getCell('E16').value = $('tmplEmail').value.trim()||'';
+    
+    // ดึงค่า Config ปัจจุบันมาใช้
+    const gpPct = parseFloat($('cfgGP').value) || 0;
+    const uptimePct = parseFloat($('cfgUptime').value) || 0;
+    const doRoundup = $('cfgRoundup').value === 'yes';
+    
+    let row=28, itemNo=0;
+    for(const r of quoteRows()){
+      if(row>300) break;
+      if(r.section){ ws.getCell(row,6).value=r.desc; row++; continue; }
+      itemNo++;
+      
+      const up = r.unitPrice!=='' && r.unitPrice!=null ? r.unitPrice : null;
+      const tot = r.total!=='' && r.total!=null ? r.total : null;
+      const qNum = r.qNum;
+      
+      ws.getCell(row,2).value  = itemNo;
+      ws.getCell(row,3).value  = r.pn||'';
+      ws.getCell(row,6).value  = r.desc||'';
+      ws.getCell(row,12).value = isNaN(qNum) ? r.qty : qNum; 
+      ws.getCell(row,13).value = r.unitType||''; 
+      
+      if(up!=null) ws.getCell(row,18).value = up; 
+      
+      if(up!=null && !isNaN(qNum)){
+          // สูตร Unit Cost * Qty (ช่อง R * ช่อง L) -> ใส่ที่ช่อง S (19)
+          ws.getCell(row,19).value = { formula: `L${row}*R${row}`, result: tot };
+          
+          // คำนวณ Selling Price -> ใส่ที่ช่อง U (21)
+          let baseFormula = `R${row}/(1-${gpPct/100})*1.02*(1+${uptimePct/100})`;
+          let finalFormula = doRoundup ? `ROUNDUP(${baseFormula},0)` : baseFormula;
+          
+          ws.getCell(row,21).value = { formula: finalFormula, result: r.sellUnit };
+          
+          // คำนวณ Total Selling Price -> ใส่ที่ช่อง V (22)
+          // =L*U
+          ws.getCell(row,22).value = { formula: `L${row}*U${row}`, result: r.sellTotal };
+          
+      } else if(tot!=null) {
+          ws.getCell(row,19).value = tot;
+      }
+      
+      row++;
+    }
+    return wb;
+  }
+  
+  $('tmplExportBtn').addEventListener('click', async ()=>{
+    const b=$('tmplExportBtn'), t=b.textContent, st=$('tmplStatus');
+    b.disabled=true; b.innerHTML='<span class="spinner"></span>กำลังสร้าง...'; st.textContent='';
+    try{
+      const wb=await fillNTTTemplate();
+      const buf=await wb.xlsx.writeBuffer();
+      const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+      const proj=($('tmplProject').value.trim()||'Quotation').replace(/[^\w\sก-๙-]/g,'').trim().replace(/\s+/g,'-');
+      a.download=`NTT-Quotation-${proj}.xlsx`; a.click();
+      st.textContent='✓ สร้างสำเร็จ'; st.style.color='var(--green)';
+    }catch(e){ st.textContent='ผิดพลาด: '+e.message; st.style.color='var(--danger)'; }
+    finally{ b.disabled=false; b.textContent=t; }
+  });
+})();
+</script>
+</body>
+</html>
