@@ -114,7 +114,7 @@
   .hidden{display:none}
   .no-remark .col-remark{display:none}
   .normal-mode .col-split{display:none}
-  .split-mode .col-single{display:none}
+  .split-mode .col-split{display:none}
   .price-remarks{margin-top:16px;border-top:1px dashed var(--line);padding-top:14px}
   .price-remarks h4{font-family:'Space Grotesk',sans-serif;font-size:13px;margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink)}
   .price-remarks ul{margin:0;padding-left:18px}
@@ -255,6 +255,33 @@
         </div>
       </div>
 
+      <div class="row" style="margin-bottom:14px; background:#f4f7fa; border:1px solid var(--line); border-radius:10px; padding:12px 16px; align-items:center;">
+        <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14px; color:var(--green); margin-right:8px;">🛡️ Uptime Configure</div>
+        <div class="field" style="flex:2; min-width:300px;">
+          <label style="margin-bottom:4px">Support Type</label>
+          <select id="cfgSupportType" style="padding:6px 10px; background:#fff;">
+            <option value="NO">NO</option>
+            <option value="VBR">VBR</option>
+            <option value="DDSP-UPTS-ThirdPartyIncidentCoord24x7">DDSP-UPTS-ThirdPartyIncidentCoord24x7</option>
+            <option value="DDSP-UPTS-PartsEngineerOnsite24x7x4">DDSP-UPTS-PartsEngineerOnsite24x7x4</option>
+            <option value="DDSP-UPTS-PartsEngineerOnsiteBusHrsxNBD">DDSP-UPTS-PartsEngineerOnsiteBusHrsxNBD</option>
+            <option value="DDSP-UPTS-PartsEngineerOnsiteBusHrsx4">DDSP-UPTS-PartsEngineerOnsiteBusHrsx4</option>
+            <option value="DDSP-UPTS-PartsOnlyBusHrsxNBD">DDSP-UPTS-PartsOnlyBusHrsxNBD</option>
+            <option value="DDSP-UPTS-RemoteSupport">DDSP-UPTS-RemoteSupport</option>
+          </select>
+        </div>
+        <div class="field" style="flex:none; width:90px; min-width:auto;">
+          <label style="margin-bottom:4px">QTY (Year)</label>
+          <select id="cfgSupportQty" style="padding:6px 10px; background:#fff;" disabled>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+        </div>
+      </div>
+
       <div class="summary">
         <div>
           <div class="grand" id="grandQ">—</div>
@@ -322,7 +349,7 @@
 
   <div class="foot">
     <strong>ความเป็นส่วนตัว:</strong> ไฟล์ถูกส่งตรงจาก browser ไปที่ Gemini API ด้วย key ของคุณเอง ไม่ผ่าน server ใคร —
-    แต่ถ้าใช้ <strong>free tier</strong> Google อาจนำข้อมูลไป train ได้ สำหรับ BOQ ลูกค้า/vendor ที่เป็นความลับ แนะนำเปิด billing (paid tier) ราคายังถูกมาก
+    แต่ถ้าใช้ <strong>free tier</strong> Google อาจนำข้อมูลไป train ได้ สำหรับ BOQ ลูกค้า/vendor ที่เป็นความลับ แนะนำเปิด billing (paid tier) ราคยังถูกมาก
   </div>
 
 </div>
@@ -631,6 +658,13 @@ Return ONLY the structured JSON object.`;
   $('cfgUptime').addEventListener('input', renderQuote);
   $('cfgRoundup').addEventListener('change', renderQuote);
   $('cfgFillOP').addEventListener('change', renderQuote);
+  
+  $('cfgSupportType').addEventListener('change', e => {
+      const val = e.target.value;
+      $('cfgSupportQty').disabled = (val === 'NO' || val === 'VBR');
+      renderQuote();
+  });
+  $('cfgSupportQty').addEventListener('change', renderQuote);
 
   function quoteRows(){
     const rows=[];
@@ -660,6 +694,62 @@ Return ONLY the structured JSON object.`;
         origIdx: idx
       });
     });
+
+    const sType = $('cfgSupportType').value;
+    const sQty = parseInt($('cfgSupportQty').value) || 1;
+
+    if (sType !== 'NO') {
+        const currentItemCount = rows.filter(x => !x.section).length;
+        const hasSections = lastRows.some(x => x.is_section);
+        let nextSectionNo = "";
+        if (hasSections) {
+            const sectionCount = lastRows.filter(x => x.is_section).length;
+            nextSectionNo = String(sectionCount + 1);
+        }
+
+        rows.push({
+            section: true,
+            item_no: nextSectionNo,
+            desc: "▶ NTT Support Service",
+            origIdx: -98,
+            isSupportSectionHeader: true
+        });
+
+        let extItem = {
+            item: hasSections ? `${nextSectionNo}.1` : String(currentItemCount + 1),
+            pn: "NTT Support Service",
+            qty: "",
+            unitType: "",
+            unitPrice: "",
+            total: "",
+            sellUnit: "",
+            sellTotal: "",
+            qNum: NaN,
+            origIdx: -99, 
+            isUptimeConfigRow: true,
+            supportType: sType
+        };
+
+        if (sType === 'VBR') {
+            extItem.desc = "Excluded NTT Installations Service and support service , warranty and support by Product Vendor";
+        } else {
+            extItem.qty = sQty;
+            extItem.unitType = "Year";
+            extItem.unitPrice = "Included";
+            extItem.total = "Included";
+            extItem.sellUnit = "Included";
+            extItem.sellTotal = "Included";
+            
+            if (sType === 'DDSP-UPTS-ThirdPartyIncidentCoord24x7') extItem.desc = "24x7 Third Party Incident Coordination.";
+            else if (sType === 'DDSP-UPTS-PartsEngineerOnsite24x7x4') extItem.desc = "24x7 Remote Support, Alerting; 24x7x4 Engineer and parts arrival on site.";
+            else if (sType === 'DDSP-UPTS-PartsEngineerOnsiteBusHrsxNBD') extItem.desc = "8x5 Remote Support, Alerting; Business Hours x Next Business Day Engineer and parts arrival on site.";
+            else if (sType === 'DDSP-UPTS-PartsEngineerOnsiteBusHrsx4') extItem.desc = "24x7 Remote Support, Alerting; Business Hours x 4 Engineer and parts arrival on site.";
+            else if (sType === 'DDSP-UPTS-PartsOnlyBusHrsxNBD') extItem.desc = "8x5 Remote Support; Business Hours x Next Business Day parts arrival on site. Part only Excluded Engineer";
+            else if (sType === 'DDSP-UPTS-RemoteSupport') extItem.desc = "24x7 Remote Support.";
+        }
+        rows.push(extItem);
+    }
+
     return rows;
   }
 
@@ -669,7 +759,7 @@ Return ONLY the structured JSON object.`;
     
     quoteRows().forEach(r=>{
       const tr=document.createElement('tr');
-      tr.setAttribute('draggable', 'true');
+      tr.setAttribute('draggable', (r.isUptimeConfigRow || r.isSupportSectionHeader) ? 'false' : 'true'); 
       tr.setAttribute('data-index', r.origIdx);
       
       if(r.section){ 
@@ -680,15 +770,22 @@ Return ONLY the structured JSON object.`;
       }
       itemCount++;
       
-      if(r.total) grand += parseNum(r.total);
-      if(r.sellTotal) grandSell += parseNum(r.sellTotal);
+      if(r.total && !r.isUptimeConfigRow) grand += parseNum(r.total);
+      if(r.sellTotal && !r.isUptimeConfigRow) grandSell += parseNum(r.sellTotal);
+
+      const upTxt = (r.unitPrice === 'Included') ? 'Included' : (r.unitPrice!==''?numFmt(r.unitPrice):'');
+      const totTxt = (r.total === 'Included') ? 'Included' : (r.total!==''?numFmt(r.total):'');
+      const sUpTxt = (r.sellUnit === 'Included') ? 'Included' : (r.sellUnit!==''?numFmt(r.sellUnit):'');
+      const sTotTxt = (r.sellTotal === 'Included') ? 'Included' : (r.sellTotal!==''?numFmt(r.sellTotal):'');
+
+      if(r.isUptimeConfigRow) tr.style.background = "#f4fcf6";
 
       tr.innerHTML =
         `<td class="mono">${esc(r.item)}</td><td class="mono">${esc(r.pn)}</td><td>${esc(r.desc)}</td>`+
         `<td class="num mono">${esc(r.qty)}</td><td class="mono">${esc(r.unitType)}</td>`+
-        `<td class="num mono">${r.unitPrice!==''?numFmt(r.unitPrice):''}</td><td class="num mono">${r.total!==''?numFmt(r.total):''}</td>`+
-        `<td class="num mono" style="color:var(--green);font-weight:600;border-left:2px solid var(--line);background:#f2fff5">${r.sellUnit!==''?numFmt(r.sellUnit):''}</td>`+
-        `<td class="num mono" style="color:var(--green);font-weight:600;background:#f2fff5">${r.sellTotal!==''?numFmt(r.sellTotal):''}</td>`;
+        `<td class="num mono">${upTxt}</td><td class="num mono">${totTxt}</td>`+
+        `<td class="num mono" style="color:var(--green);font-weight:600;border-left:2px solid var(--line);background:#f2fff5">${sUpTxt}</td>`+
+        `<td class="num mono" style="color:var(--green);font-weight:600;background:#f2fff5">${sTotTxt}</td>`;
       tb.appendChild(tr);
     });
     
@@ -700,6 +797,7 @@ Return ONLY the structured JSON object.`;
   let draggedIndex = null;
 
   function moveBlock(fromIndex, toIndex) {
+    if (fromIndex === -99 || toIndex === -99 || fromIndex === -98 || toIndex === -98) return; 
     const isSection = lastRows[fromIndex].is_section;
     let blockCount = 1;
     
@@ -731,7 +829,7 @@ Return ONLY the structured JSON object.`;
     
     tbody.addEventListener('dragstart', e => {
       const tr = e.target.closest('tr');
-      if (!tr) return;
+      if (!tr || tr.getAttribute('data-index') === "-99" || tr.getAttribute('data-index') === "-98") return;
       draggedIndex = parseInt(tr.getAttribute('data-index'));
       tr.style.opacity = '0.4';
       e.dataTransfer.effectAllowed = 'move';
@@ -749,7 +847,7 @@ Return ONLY the structured JSON object.`;
     tbody.addEventListener('dragover', e => {
       e.preventDefault();
       const tr = e.target.closest('tr');
-      if (!tr || draggedIndex === null) return;
+      if (!tr || draggedIndex === null || tr.getAttribute('data-index') === "-99" || tr.getAttribute('data-index') === "-98") return;
       
       e.dataTransfer.dropEffect = 'move';
       const rect = tr.getBoundingClientRect();
@@ -775,7 +873,7 @@ Return ONLY the structured JSON object.`;
     tbody.addEventListener('drop', e => {
       e.preventDefault();
       const tr = e.target.closest('tr');
-      if (!tr || draggedIndex === null) return;
+      if (!tr || draggedIndex === null || tr.getAttribute('data-index') === "-99" || tr.getAttribute('data-index') === "-98") return;
       
       const targetIndex = parseInt(tr.getAttribute('data-index'));
       if (draggedIndex === targetIndex) return;
@@ -884,7 +982,7 @@ Return ONLY the structured JSON object.`;
         if(col>=6 && col<=9) c.numFmt='#,##0.00';
       });
       
-      if (!isNaN(qNum) && r.unitPrice !== '') {
+      if (!isNaN(qNum) && r.unitPrice !== '' && r.unitPrice !== 'Included') {
         row.getCell(7).value = { formula: `D${dataRow}*F${dataRow}`, result: r.total };
         row.getCell(9).value = { formula: `D${dataRow}*H${dataRow}`, result: r.sellTotal };
       } else {
@@ -1028,7 +1126,7 @@ Return ONLY the structured JSON object.`;
     
     if(!ws) throw new Error(`ไม่พบชีต "${sheetName}"`);
     
-    // --- ส่วนที่แทรกชีทใหม่ "BOQ-Raw" ต่อท้ายชีทหลัก ---
+    // --- แทรกชีทใหม่ "BOQ-Raw" ต่อท้ายชีทหลัก ---
     const boqSheetName = "BOQ-Raw";
     if (wb.sheet(boqSheetName)) {
         wb.sheet(boqSheetName).delete();
@@ -1057,70 +1155,101 @@ Return ONLY the structured JSON object.`;
     const doFillOP = $('cfgFillOP').value === 'yes'; 
     
     let row = 28;
-    let boqRow = 2; // ตัวนับแถวสำหรับชีต BOQ-Raw
+    let boqRow = 2; 
     
     for(const r of quoteRows()){
       if(row > 300) break;
       
+      // 🌟 กรณีแถวหัวข้อแบ่งส่วน (Section / Segment Subject) -> ปรับตัวหนาทั้งแถว (Bold) ทั้ง 2 หน้าชีท
       if(r.section){ 
           ws.cell(`B${row}`).value(r.item_no);
           ws.cell(`F${row}`).value(r.desc); 
           
+          // ปรับฟอนต์ให้ชีทใบเสนอราคาหลัก (Quotation Sheet) เป็นตัวหนาทั้งแถว (คอลลัมน์ B ถึง V)
+          ws.row(row).style({ bold: true });
+          
           wsBOQ.cell(`A${boqRow}`).value(r.item_no);
-          wsBOQ.cell(`C${boqRow}`).value(r.desc).style({ bold: true });
+          wsBOQ.cell(`C${boqRow}`).value(r.desc);
+          
+          // ปรับฟอนต์ให้ชีทสำรองข้อมูลย่อย (BOQ-Raw Sheet) เป็นตัวหนาทั้งแถว (คอลลัมน์ A ถึง I) พร้อมถมสีพื้นเทาอ่อน
+          for(let col=1; col<=9; col++) {
+              wsBOQ.row(boqRow).cell(col).style({ bold: true, fill: "F2F2F2" });
+          }
           
           row++; 
           boqRow++;
           continue; 
       }
       
-      const up = (r.unitPrice !== '' && r.unitPrice != null) ? parseNum(r.unitPrice) : null;
-      const tot = (r.total !== '' && r.total != null) ? parseNum(r.total) : null;
-      const qNum = parseNum(r.qty);
-      
+      // บันทึกแกนหลักลงชีท Quotation เดิม
       ws.cell(`B${row}`).value(r.item);
       ws.cell(`C${row}`).value(r.pn || '');
       ws.cell(`F${row}`).value(r.desc || '');
-      ws.cell(`L${row}`).value(isNaN(qNum) ? r.qty : qNum); 
-      ws.cell(`M${row}`).value(r.unitType || ''); 
       
-      // บันทึกลงชีทย่อย BOQ-Raw (บังคับแปลง String เป็น Number ก่อนเขียน)
+      // บันทึกลงชีทย่อย BOQ-Raw
       wsBOQ.cell(`A${boqRow}`).value(r.item);
       wsBOQ.cell(`B${boqRow}`).value(r.pn || '');
       wsBOQ.cell(`C${boqRow}`).value(r.desc || '');
-      wsBOQ.cell(`D${boqRow}`).value(isNaN(qNum) ? r.qty : qNum);
       wsBOQ.cell(`E${boqRow}`).value(r.unitType || '');
-      
-      if(up != null && !isNaN(up)) {
-          ws.cell(`R${row}`).value(up);
-          wsBOQ.cell(`F${boqRow}`).value(up);
-      }
-      
-      if(up != null && !isNaN(up) && !isNaN(qNum)){
-          ws.cell(`S${row}`).formula(`L${row}*R${row}`);
-          wsBOQ.cell(`G${boqRow}`).formula(`D${boqRow}*F${boqRow}`);
-          
-          let baseFormula = `R${row}/(1-${gpPct/100})*1.02*(1+${uptimePct/100})`;
-          let finalFormula = doRoundup ? `ROUNDUP(${baseFormula},0)` : baseFormula;
-          
-          ws.cell(`U${row}`).formula(finalFormula);
-          ws.cell(`V${row}`).formula(`L${row}*U${row}`);
-          
-          // ผูกสูตรดึง Selling จากชีทใบเสนอราคาหลัก
-          wsBOQ.cell(`H${boqRow}`).formula(`'${sheetName}'!U${row}`);
-          wsBOQ.cell(`I${boqRow}`).formula(`'${sheetName}'!V${row}`);
-          
-          if(doFillOP) {
-              ws.cell(`O${row}`).formula(`U${row}`); 
-              ws.cell(`P${row}`).formula(`O${row}*L${row}`); 
+
+      const qNum = parseNum(r.qty);
+      ws.cell(`L${row}`).value(isNaN(qNum) ? r.qty : qNum); 
+      ws.cell(`M${row}`).value(r.unitType || ''); 
+      wsBOQ.cell(`D${boqRow}`).value(isNaN(qNum) ? r.qty : qNum);
+
+      // ตรวจสอบแถว Uptime Configure พ่วงท้าย
+      if (r.isUptimeConfigRow) {
+          if (r.supportType === 'VBR') {
+              // ปล่อยว่าง
+          } else {
+              ws.cell(`R${row}`).value("Included");
+              ws.cell(`S${row}`).value("Included");
+              ws.cell(`U${row}`).value("Included");
+              ws.cell(`V${row}`).value("Included");
+
+              wsBOQ.cell(`F${boqRow}`).value("Included");
+              wsBOQ.cell(`G${boqRow}`).value("Included");
+              wsBOQ.cell(`H${boqRow}`).value("Included");
+              wsBOQ.cell(`I${boqRow}`).value("Included");
+
+              if(doFillOP) {
+                  ws.cell(`O${row}`).value("Included"); 
+                  ws.cell(`P${row}`).value("Included"); 
+              }
+          }
+      } else {
+          // ประมวลผลแถวปกติสินค้า
+          const up = (r.unitPrice !== '' && r.unitPrice != null) ? parseNum(r.unitPrice) : null;
+          const tot = (r.total !== '' && r.total != null) ? parseNum(r.total) : null;
+
+          if(up != null && !isNaN(up)) {
+              ws.cell(`R${row}`).value(up);
+              wsBOQ.cell(`F${boqRow}`).value(up);
           }
           
-      } else if(tot != null && !isNaN(tot)) {
-          ws.cell(`S${row}`).value(tot);
-          wsBOQ.cell(`G${boqRow}`).value(tot);
-          
-          // แถวที่ไม่มี Unit Cost แต่มีราคารวม (เช่นงานเหมา/Lot) ให้ดึงยอดตรงๆ
-          wsBOQ.cell(`I${boqRow}`).formula(`'${sheetName}'!V${row}`);
+          if(up != null && !isNaN(up) && !isNaN(qNum)){
+              ws.cell(`S${row}`).formula(`L${row}*R${row}`);
+              wsBOQ.cell(`G${boqRow}`).formula(`D${boqRow}*F${boqRow}`);
+              
+              let baseFormula = `R${row}/(1-${gpPct/100})*1.02*(1+${uptimePct/100})`;
+              let finalFormula = doRoundup ? `ROUNDUP(${baseFormula},0)` : baseFormula;
+              
+              ws.cell(`U${row}`).formula(finalFormula);
+              ws.cell(`V${row}`).formula(`L${row}*U${row}`);
+              
+              wsBOQ.cell(`H${boqRow}`).formula(`'${sheetName}'!U${row}`);
+              wsBOQ.cell(`I${boqRow}`).formula(`'${sheetName}'!V${row}`);
+              
+              if(doFillOP) {
+                  ws.cell(`O${row}`).formula(`U${row}`); 
+                  ws.cell(`P${row}`).formula(`O${row}*L${row}`); 
+              }
+              
+          } else if(tot != null && !isNaN(tot)) {
+              ws.cell(`S${row}`).value(tot);
+              wsBOQ.cell(`G${boqRow}`).value(tot);
+              wsBOQ.cell(`I${boqRow}`).formula(`'${sheetName}'!V${row}`);
+          }
       }
       
       row++;
