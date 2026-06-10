@@ -76,7 +76,7 @@
 
   /* ---- action ---- */
   .actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:16px}
-  button{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:99px;padding:11px 16px;cursor:pointer;transition:transform .05s,background .15s}
+  button{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;padding:11px 16px;cursor:pointer;transition:transform .05s,background .15s}
   button:hover{background:var(--paper)}
   button:active{transform:translateY(1px)}
   button:disabled{opacity:.45;cursor:not-allowed}
@@ -349,7 +349,7 @@
 
   <div class="foot">
     <strong>ความเป็นส่วนตัว:</strong> ไฟล์ถูกส่งตรงจาก browser ไปที่ Gemini API ด้วย key ของคุณเอง ไม่ผ่าน server ใคร —
-    แต่ถ้าใช้ <strong>free tier</strong> Google อาจนำข้อมูลไป train ได้ สำหรับ BOQ ลูกค้า/vendor ที่เป็นความลับ แนะนำเปิด billing (paid tier) ราคยังถูกมาก
+    แต่ถ้าใช้ <strong>free tier</strong> Google อาจนำข้อมูลไป train ได้ สำหรับ BOQ ลูกค้า/vendor ที่เป็นความลับ แนะนำเปิด billing (paid tier) ราคายังถูกมาก
   </div>
 
 </div>
@@ -1126,7 +1126,7 @@ Return ONLY the structured JSON object.`;
     
     if(!ws) throw new Error(`ไม่พบชีต "${sheetName}"`);
     
-    // --- แทรกชีทใหม่ "BOQ-Raw" ต่อท้ายชีทหลัก ---
+    // --- สร้างชีทใหม่ "BOQ-Raw" ต่อท้ายชีทหลัก ---
     const boqSheetName = "BOQ-Raw";
     if (wb.sheet(boqSheetName)) {
         wb.sheet(boqSheetName).delete();
@@ -1158,22 +1158,24 @@ Return ONLY the structured JSON object.`;
     let boqRow = 2; 
     
     for(const r of quoteRows()){
-      if(row > 300) break;
+      if(row > 450) break; // ขยายเผื่อให้รองรับ BOQ แบบยาวมากๆ ได้ถึง 400 กว่าบรรทัด
       
-      // 🌟 กรณีแถวหัวข้อแบ่งส่วน (Section / Segment Subject) -> ปรับตัวหนาทั้งแถว (Bold) ทั้ง 2 หน้าชีท
+      // 🌟 [แก้บั๊กตัวหนาอย่างสมบูรณ์]: วนลูปทำตัวหนาทีละช่อง 
       if(r.section){ 
           ws.cell(`B${row}`).value(r.item_no);
           ws.cell(`F${row}`).value(r.desc); 
           
-          // ปรับฟอนต์ให้ชีทใบเสนอราคาหลัก (Quotation Sheet) เป็นตัวหนาทั้งแถว (คอลลัมน์ B ถึง V)
-          ws.row(row).style({ bold: true });
+          // ทำตัวหนาทุกคอลัมน์ในแถวนั้นอย่างปลอดภัย (คอลัมน์ A ถึง V = 1 ถึง 22)
+          for(let col=1; col<=22; col++) {
+              ws.row(row).cell(col).style("bold", true);
+          }
           
           wsBOQ.cell(`A${boqRow}`).value(r.item_no);
           wsBOQ.cell(`C${boqRow}`).value(r.desc);
           
-          // ปรับฟอนต์ให้ชีทสำรองข้อมูลย่อย (BOQ-Raw Sheet) เป็นตัวหนาทั้งแถว (คอลลัมน์ A ถึง I) พร้อมถมสีพื้นเทาอ่อน
+          // ทำตัวหนาและถมสีในชีท BOQ-Raw (คอลัมน์ A ถึง I = 1 ถึง 9)
           for(let col=1; col<=9; col++) {
-              wsBOQ.row(boqRow).cell(col).style({ bold: true, fill: "F2F2F2" });
+              wsBOQ.row(boqRow).cell(col).style("bold", true).style("fill", "F2F2F2");
           }
           
           row++; 
@@ -1181,7 +1183,7 @@ Return ONLY the structured JSON object.`;
           continue; 
       }
       
-      // บันทึกแกนหลักลงชีท Quotation เดิม
+      // บันทึกรายการปกติลงชีทหลัก
       ws.cell(`B${row}`).value(r.item);
       ws.cell(`C${row}`).value(r.pn || '');
       ws.cell(`F${row}`).value(r.desc || '');
