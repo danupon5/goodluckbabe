@@ -6,6 +6,7 @@
 <title>BOQ Extractor · Gemini</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx-populate/1.21.0/xlsx-populate.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -302,7 +303,7 @@
           <div class="tmpl-field"><label>E-mail (E16)</label><input type="text" id="tmplEmail" placeholder="email@company.com"></div>
         </div>
         <div class="hint" style="margin-top:8px;">* ระบบจะนำ Unit Cost ไปกรอกในช่อง R และคำนวณ <b>Selling Price อัตโนมัติลงในช่อง U และ V</b> ตามค่า GP/Uptime ด้านบน</div>
-        <button class="primary" id="tmplExportBtn" style="margin-top:8px">⬇ Export quote Template</button>
+        <button class="primary" id="tmplExportBtn" style="margin-top:8px">⬇ Export NTT Template</button>
         <span class="status" id="tmplStatus" style="margin-left:12px"></span>
       </div>
     </div>
@@ -864,66 +865,68 @@ Return ONLY the structured JSON object.`;
     reader.readAsArrayBuffer(f);
   });
   
+  // เปลี่ยนมาใช้ XlsxPopulate แทน ExcelJS ตรงนี้เพื่อรักษาฟอร์แมตในชีตอื่นๆ
   async function fillNTTTemplate(){
     if(!lastRows.length) throw new Error('แกะ BOQ ก่อน แล้วค่อย export');
     if(!templateBuf) throw new Error('อัปโหลด template .xlsx ก่อน');
-    const wb=new ExcelJS.Workbook();
-    await wb.xlsx.load(templateBuf);
-    const sheetName=$('tmplSheet').value||'Quotation-NTT-AI';
-    const ws=wb.getWorksheet(sheetName);
+    
+    // โหลดไฟล์ด้วย XlsxPopulate
+    const wb = await XlsxPopulate.fromDataAsync(templateBuf);
+    const sheetName = $('tmplSheet').value || 'Quotation-NTT-AI';
+    const ws = wb.sheet(sheetName);
+    
     if(!ws) throw new Error(`ไม่พบชีต "${sheetName}"`);
     
-    ws.getCell('K6').value  = new Date();
+    // เติมข้อมูล Header
+    ws.cell('K6').value(new Date());
     
-    // ดึงค่าโปรเจกต์จาก input แล้วเอาไปใส่ทั้ง F26 และ E12 
-    const projectName = $('tmplProject').value.trim()||'';
-    ws.getCell('F26').value = projectName;
-    ws.getCell('E12').value = projectName; 
+    const projectName = $('tmplProject').value.trim() || '';
+    ws.cell('F26').value(projectName);
+    ws.cell('E12').value(projectName); 
     
-    ws.getCell('E13').value = $('tmplCompany').value.trim()||'';
-    ws.getCell('E14').value = $('tmplAttn').value.trim()||'';
-    ws.getCell('E15').value = $('tmplTel').value.trim()||'';
-    ws.getCell('E16').value = $('tmplEmail').value.trim()||'';
+    ws.cell('E13').value($('tmplCompany').value.trim() || '');
+    ws.cell('E14').value($('tmplAttn').value.trim() || '');
+    ws.cell('E15').value($('tmplTel').value.trim() || '');
+    ws.cell('E16').value($('tmplEmail').value.trim() || '');
     
-    // ดึงค่า Config ปัจจุบันมาใช้
     const gpPct = parseFloat($('cfgGP').value) || 0;
     const uptimePct = parseFloat($('cfgUptime').value) || 0;
     const doRoundup = $('cfgRoundup').value === 'yes';
     
-    let row=28, itemNo=0;
+    let row = 28, itemNo = 0;
     for(const r of quoteRows()){
-      if(row>300) break;
-      if(r.section){ ws.getCell(row,6).value=r.desc; row++; continue; }
-      itemNo++;
+      if(row > 300) break;
       
-      const up = r.unitPrice!=='' && r.unitPrice!=null ? r.unitPrice : null;
-      const tot = r.total!=='' && r.total!=null ? r.total : null;
+      if(r.section){ 
+          ws.cell(`F${row}`).value(r.desc); 
+          row++; 
+          continue; 
+      }
+      
+      itemNo++;
+      const up = r.unitPrice !== '' && r.unitPrice != null ? r.unitPrice : null;
+      const tot = r.total !== '' && r.total != null ? r.total : null;
       const qNum = r.qNum;
       
-      ws.getCell(row,2).value  = itemNo;
-      ws.getCell(row,3).value  = r.pn||'';
-      ws.getCell(row,6).value  = r.desc||'';
-      ws.getCell(row,12).value = isNaN(qNum) ? r.qty : qNum; 
-      ws.getCell(row,13).value = r.unitType||''; 
+      ws.cell(`B${row}`).value(itemNo);
+      ws.cell(`C${row}`).value(r.pn || '');
+      ws.cell(`F${row}`).value(r.desc || '');
+      ws.cell(`L${row}`).value(isNaN(qNum) ? r.qty : qNum); 
+      ws.cell(`M${row}`).value(r.unitType || ''); 
       
-      if(up!=null) ws.getCell(row,18).value = up; 
+      if(up != null) ws.cell(`R${row}`).value(up); 
       
-      if(up!=null && !isNaN(qNum)){
-          // สูตร Unit Cost * Qty (ช่อง R * ช่อง L) -> ใส่ที่ช่อง S (19)
-          ws.getCell(row,19).value = { formula: `L${row}*R${row}`, result: tot };
+      if(up != null && !isNaN(qNum)){
+          ws.cell(`S${row}`).formula(`L${row}*R${row}`);
           
-          // คำนวณ Selling Price -> ใส่ที่ช่อง U (21)
           let baseFormula = `R${row}/(1-${gpPct/100})*1.02*(1+${uptimePct/100})`;
           let finalFormula = doRoundup ? `ROUNDUP(${baseFormula},0)` : baseFormula;
           
-          ws.getCell(row,21).value = { formula: finalFormula, result: r.sellUnit };
+          ws.cell(`U${row}`).formula(finalFormula);
+          ws.cell(`V${row}`).formula(`L${row}*U${row}`);
           
-          // คำนวณ Total Selling Price -> ใส่ที่ช่อง V (22)
-          // =L*U
-          ws.getCell(row,22).value = { formula: `L${row}*U${row}`, result: r.sellTotal };
-          
-      } else if(tot!=null) {
-          ws.getCell(row,19).value = tot;
+      } else if(tot != null) {
+          ws.cell(`S${row}`).value(tot);
       }
       
       row++;
@@ -935,15 +938,24 @@ Return ONLY the structured JSON object.`;
     const b=$('tmplExportBtn'), t=b.textContent, st=$('tmplStatus');
     b.disabled=true; b.innerHTML='<span class="spinner"></span>กำลังสร้าง...'; st.textContent='';
     try{
-      const wb=await fillNTTTemplate();
-      const buf=await wb.xlsx.writeBuffer();
-      const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-      const proj=($('tmplProject').value.trim()||'Quotation').replace(/[^\w\sก-๙-]/g,'').trim().replace(/\s+/g,'-');
-      a.download=`NTT-Quotation-${proj}.xlsx`; a.click();
+      const wb = await fillNTTTemplate();
+      
+      // ดึงข้อมูลไฟล์ออกมาเป็น Blob
+      const blob = await wb.outputAsync();
+      
+      const a = document.createElement('a'); 
+      a.href = URL.createObjectURL(blob);
+      const proj = ($('tmplProject').value.trim()||'Quotation').replace(/[^\w\sก-๙-]/g,'').trim().replace(/\s+/g,'-');
+      a.download = `NTT-Quotation-${proj}.xlsx`; 
+      a.click();
+      
       st.textContent='✓ สร้างสำเร็จ'; st.style.color='var(--green)';
-    }catch(e){ st.textContent='ผิดพลาด: '+e.message; st.style.color='var(--danger)'; }
-    finally{ b.disabled=false; b.textContent=t; }
+    }catch(e){ 
+      st.textContent='ผิดพลาด: '+e.message; st.style.color='var(--danger)'; 
+    }
+    finally{ 
+      b.disabled=false; b.textContent=t; 
+    }
   });
 })();
 </script>
