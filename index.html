@@ -313,7 +313,7 @@
           <div class="tmpl-field"><label>Tel (E15)</label><input type="text" id="tmplTel" placeholder="เบอร์โทร"></div>
           <div class="tmpl-field"><label>E-mail (E16)</label><input type="text" id="tmplEmail" placeholder="email@company.com"></div>
         </div>
-        <div class="hint" style="margin-top:8px;">* ระบบจะนำ Unit Cost ไปกรอกในช่อง R และคำนวณ <b>Selling Price อัตโนมัติลงในช่อง U และ V</b> ตามค่า GP/Uptime ด้านบน</div>
+        <div class="hint" style="margin-top:8px;">* ระบบจะนำ Unit Cost ไปกรอกในช่อง R และคำนวณ <b>Selling Price อัตโนมัติลงในช่อง U และ V</b> ตามค่า GP/Uptime ด้านบน และสร้างชีทใหม่ชื่อ <b>BOQ-Raw</b> แทรกลงในไฟล์ด้วย</div>
         <button class="primary" id="tmplExportBtn" style="margin-top:8px">⬇ Export NTT Template</button>
         <span class="status" id="tmplStatus" style="margin-left:12px"></span>
       </div>
@@ -582,7 +582,6 @@ Return ONLY the structured JSON object.`;
       tr.setAttribute('draggable', 'true');
       tr.setAttribute('data-index', idx);
       
-      // ✨ แก้ไขบั๊กหน้าเว็บตารางดิบ: แถวหัวข้อ Section จะแยกแสดงเลขลำดับในช่องแรก ไม่โดนยุบกลืนรวมก้อนแล้ว
       if(r.is_section){
         tr.className='section'; 
         tr.innerHTML = `<td class="mono">${esc(r.item_no||'')}</td><td class="mono"></td><td colspan="9">▶ ${esc(r.description||'')}</td>`; 
@@ -673,7 +672,6 @@ Return ONLY the structured JSON object.`;
       tr.setAttribute('draggable', 'true');
       tr.setAttribute('data-index', r.origIdx);
       
-      // ✨ แก้ไขบั๊กหน้าเว็บตารางเคาะราคา: สำหรับแถวหัวข้อ Section จะแยกแสดงเลขลำดับออกมาที่ช่องแรกสุดด้วยเช่นกัน
       if(r.section){ 
         tr.className='section'; 
         tr.innerHTML = `<td class="mono">${esc(r.item_no)}</td><td class="mono"></td><td colspan="7">${esc(r.desc)}</td>`; 
@@ -809,7 +807,6 @@ Return ONLY the structured JSON object.`;
 
   const numOrBlank = v => { const n=parseNum(v); return isNaN(n)?'':n; };
   
-  // ✨ แก้ไขบั๊ก Excel Export (ตารางดิบ): จ่ายเลขลำดับ item_no ออกไปตรงๆ ไม่ล็อคช่องว่างให้แถวหัวข้อหลักแล้ว
   function toAOA(){
     const head = splitMode ? ['Item No','PN','Description','QTY','HW Unit','HW Total','Labour Unit','Labour Total','Total','Remark'] : ['Item No','PN','Description','QTY','Unit Price','Total','Remark'];
     const W = head.length; const pad = a => { while(a.length<W) a.push(''); return a; }; const aoa = [head];
@@ -859,7 +856,6 @@ Return ONLY the structured JSON object.`;
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='BOQ_extract.csv'; a.click();
   });
   
-  // ✨ แก้ไขบั๊ก Excel Export (ตารางเคาะราคา ExcelJS): ให้แสดงเลขรันของ Section ลงในช่องแรกช่อง A เช่นกัน
   async function buildQuoteWorkbook(){
     const wb=new ExcelJS.Workbook(); const ws=wb.addWorksheet('BOQ');
     ws.columns=[{width:10},{width:20},{width:60},{width:8},{width:10},{width:15},{width:15},{width:18},{width:18}];
@@ -1022,7 +1018,6 @@ Return ONLY the structured JSON object.`;
     reader.readAsArrayBuffer(f);
   });
   
-  // ✨ อัปเดตการกรอกเข้า NTT Template PL: ดึงเลข itemNo ล้อตามลำดับ Hierarchy (เช่น 1, 1.1) มากรอกลงในช่องคอลลัมน์ B ด้วย
   async function fillNTTTemplate(){
     if(!lastRows.length) throw new Error('แกะ BOQ ก่อน แล้วค่อย export');
     if(!templateBuf) throw new Error('อัปโหลด template .xlsx ก่อน');
@@ -1033,6 +1028,18 @@ Return ONLY the structured JSON object.`;
     
     if(!ws) throw new Error(`ไม่พบชีต "${sheetName}"`);
     
+    // --- ส่วนที่แทรกชีทใหม่ "BOQ-Raw" ต่อท้ายชีทหลัก ---
+    const boqSheetName = "BOQ-Raw";
+    if (wb.sheet(boqSheetName)) {
+        wb.sheet(boqSheetName).delete();
+    }
+    const wsBOQ = wb.addSheet(boqSheetName, sheetName); 
+    
+    const boqHead = ['Item No','PN','Description','Qty','Unit','Unit Cost','Total Cost','Selling Unit Price','Total Selling Price'];
+    boqHead.forEach((h, i) => {
+        wsBOQ.cell(1, i + 1).value(h).style({ bold: true, fill: "D9E1F2" });
+    });
+
     ws.cell('K6').value(new Date());
     
     const projectName = $('tmplProject').value.trim() || '';
@@ -1050,30 +1057,48 @@ Return ONLY the structured JSON object.`;
     const doFillOP = $('cfgFillOP').value === 'yes'; 
     
     let row = 28;
+    let boqRow = 2; // ตัวนับแถวสำหรับชีต BOQ-Raw
+    
     for(const r of quoteRows()){
       if(row > 300) break;
       
       if(r.section){ 
-          ws.cell(`B${row}`).value(r.item_no); // ใส่เลขชุด Section (เช่น 1, 2)
+          ws.cell(`B${row}`).value(r.item_no);
           ws.cell(`F${row}`).value(r.desc); 
+          
+          wsBOQ.cell(`A${boqRow}`).value(r.item_no);
+          wsBOQ.cell(`C${boqRow}`).value(r.desc).style({ bold: true });
+          
           row++; 
+          boqRow++;
           continue; 
       }
       
-      const up = r.unitPrice !== '' && r.unitPrice != null ? r.unitPrice : null;
-      const tot = r.total !== '' && r.total != null ? r.total : null;
-      const qNum = r.qNum;
+      const up = (r.unitPrice !== '' && r.unitPrice != null) ? parseNum(r.unitPrice) : null;
+      const tot = (r.total !== '' && r.total != null) ? parseNum(r.total) : null;
+      const qNum = parseNum(r.qty);
       
-      ws.cell(`B${row}`).value(r.item); // ใส่เลขชุดไอเทมย่อยแบบสอดคล้องตารางหน้าเว็บ (เช่น 1.1, 1.2)
+      ws.cell(`B${row}`).value(r.item);
       ws.cell(`C${row}`).value(r.pn || '');
       ws.cell(`F${row}`).value(r.desc || '');
       ws.cell(`L${row}`).value(isNaN(qNum) ? r.qty : qNum); 
       ws.cell(`M${row}`).value(r.unitType || ''); 
       
-      if(up != null) ws.cell(`R${row}`).value(up); 
+      // บันทึกลงชีทย่อย BOQ-Raw (บังคับแปลง String เป็น Number ก่อนเขียน)
+      wsBOQ.cell(`A${boqRow}`).value(r.item);
+      wsBOQ.cell(`B${boqRow}`).value(r.pn || '');
+      wsBOQ.cell(`C${boqRow}`).value(r.desc || '');
+      wsBOQ.cell(`D${boqRow}`).value(isNaN(qNum) ? r.qty : qNum);
+      wsBOQ.cell(`E${boqRow}`).value(r.unitType || '');
       
-      if(up != null && !isNaN(qNum)){
+      if(up != null && !isNaN(up)) {
+          ws.cell(`R${row}`).value(up);
+          wsBOQ.cell(`F${boqRow}`).value(up);
+      }
+      
+      if(up != null && !isNaN(up) && !isNaN(qNum)){
           ws.cell(`S${row}`).formula(`L${row}*R${row}`);
+          wsBOQ.cell(`G${boqRow}`).formula(`D${boqRow}*F${boqRow}`);
           
           let baseFormula = `R${row}/(1-${gpPct/100})*1.02*(1+${uptimePct/100})`;
           let finalFormula = doRoundup ? `ROUNDUP(${baseFormula},0)` : baseFormula;
@@ -1081,16 +1106,25 @@ Return ONLY the structured JSON object.`;
           ws.cell(`U${row}`).formula(finalFormula);
           ws.cell(`V${row}`).formula(`L${row}*U${row}`);
           
+          // ผูกสูตรดึง Selling จากชีทใบเสนอราคาหลัก
+          wsBOQ.cell(`H${boqRow}`).formula(`'${sheetName}'!U${row}`);
+          wsBOQ.cell(`I${boqRow}`).formula(`'${sheetName}'!V${row}`);
+          
           if(doFillOP) {
               ws.cell(`O${row}`).formula(`U${row}`); 
               ws.cell(`P${row}`).formula(`O${row}*L${row}`); 
           }
           
-      } else if(tot != null) {
+      } else if(tot != null && !isNaN(tot)) {
           ws.cell(`S${row}`).value(tot);
+          wsBOQ.cell(`G${boqRow}`).value(tot);
+          
+          // แถวที่ไม่มี Unit Cost แต่มีราคารวม (เช่นงานเหมา/Lot) ให้ดึงยอดตรงๆ
+          wsBOQ.cell(`I${boqRow}`).formula(`'${sheetName}'!V${row}`);
       }
       
       row++;
+      boqRow++;
     }
     return wb;
   }
